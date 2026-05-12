@@ -1,0 +1,13 @@
+{
+  "name": "claude-multi-agent-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local web console that drives Claude Code as a multi-agent system.",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
