@@ -192,12 +192,15 @@ async function startSshTunnel() {
   }
   log(`[ssh] target=${RemoteSsh} forward=${EffectiveLocalPort}→${RemotePort} path=${RemotePath}`);
 
-  // The remote command does everything inline so it doesn't depend on the
-  // server-side checkout being up-to-date. Echo markers let us see in the log
-  // exactly how far we got if it fails.
+  // Remote command. Self-contained, doesn't rely on server-side start.sh.
   //   - PATH: include ~/.local/bin etc. so non-interactive SSH finds claude
-  //   - cleanup: kill any old node holding the port (fuser → lsof → pkill)
-  //   - exec node: replace shell so SIGTERM/SIGHUP can reach node directly
+  //   - pidfile-based cleanup: previous run wrote its PID to ~/.claude-...,
+  //     so we kill exactly that PID (no risk of killing our own bash session
+  //     like 'pkill -f node app.js' did)
+  //   - 'trap' on the bash: when SSH disconnects, bash gets SIGHUP and the
+  //     trap propagates SIGTERM to node so it dies cleanly. This is what
+  //     fixed the zombie-node-after-disconnect problem.
+  const PID_FILE = `$HOME/.claude-multi-agent-${RemotePort}.pid`;
   const remoteCmd = [
     `export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"`,
     `echo "[remote] pwd=$(pwd)"`,
@@ -206,20 +209,22 @@ async function startSshTunnel() {
     `command -v node >/dev/null 2>&1 || { echo "[remote] node missing in PATH=$PATH"; exit 12; }`,
     `echo "[remote] node=$(node --version 2>&1)"`,
     `[ -f app.js ] || { echo "[remote] app.js missing in $(pwd)"; exit 13; }`,
-    `if command -v fuser >/dev/null 2>&1; then ` +
-      `fuser -k ${RemotePort}/tcp >/dev/null 2>&1 || true; ` +
-      `echo "[remote] cleanup=fuser"; ` +
-      `elif command -v lsof >/dev/null 2>&1; then ` +
-      `P=$(lsof -ti tcp:${RemotePort} 2>/dev/null); ` +
-      `[ -n "$P" ] && kill $P 2>/dev/null || true; ` +
-      `echo "[remote] cleanup=lsof"; ` +
-      `else ` +
-      `pkill -f 'node app.js' >/dev/null 2>&1 || true; ` +
-      `echo "[remote] cleanup=pkill"; ` +
-      `fi`,
-    `sleep 0.5`,
+    // Cleanup: if our pidfile points to a live process, kill it
+    `if [ -f "${PID_FILE}" ]; then ` +
+      `OLD_PID=$(cat "${PID_FILE}" 2>/dev/null); ` +
+      `if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then ` +
+      `kill "$OLD_PID" 2>/dev/null; ` +
+      `for i in 1 2 3 4 5; do kill -0 "$OLD_PID" 2>/dev/null || break; sleep 0.2; done; ` +
+      `echo "[remote] cleanup=killed-pid-$OLD_PID"; ` +
+      `else echo "[remote] cleanup=stale-pidfile"; fi; ` +
+      `else echo "[remote] cleanup=none"; fi`,
+    // Start node in background, record PID, set trap so SSH disconnect kills it
     `echo "[remote] launching node"`,
-    `PROD=1 PORT=${RemotePort} exec node app.js`,
+    `PROD=1 PORT=${RemotePort} node app.js &`,
+    `NODE_PID=$!`,
+    `echo "$NODE_PID" > "${PID_FILE}"`,
+    `trap 'kill $NODE_PID 2>/dev/null; rm -f "${PID_FILE}"' EXIT HUP INT TERM`,
+    `wait $NODE_PID`,
   ].join("; ");
 
   sshOutBuf = "";

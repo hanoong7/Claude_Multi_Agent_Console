@@ -1,4 +1,4 @@
-# Claude Multi-Agent Console &nbsp;·&nbsp; v0.1.6
+# Claude Multi-Agent Console &nbsp;·&nbsp; v0.1.7
 
 내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
@@ -69,7 +69,7 @@ claude auth status
 
 ```
 [로컬 Windows]                                  [원격 Linux 서버]
-  ClaudeMultiAgentConsole-0.1.6.exe             ~/Claude_Multi_Agent_Console/
+  ClaudeMultiAgentConsole-0.1.7.exe             ~/Claude_Multi_Agent_Console/
   + config.json   ──SSH 터널──▶  ./start.sh    ──┐
        │                                          │ Claude CLI 호출
        │                                          ▼
@@ -138,7 +138,7 @@ Host myserver
 
 **C. .exe 다운로드 & 폴더 셋업**
 
-1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.1.6.exe` 다운로드
+1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.1.7.exe` 다운로드
 2. 본인이 원하는 위치에 폴더 만듬 (예: `C:\Apps\AgentConsole\`)
 3. 다운받은 `.exe`를 그 폴더에 넣기
 4. **같은 폴더에** `config.json` 파일을 만들어 아래 내용 저장:
@@ -159,7 +159,7 @@ Host myserver
 
 ```
 C:\Apps\AgentConsole\
-├── ClaudeMultiAgentConsole-0.1.6.exe
+├── ClaudeMultiAgentConsole-0.1.7.exe
 └── config.json
 ```
 
@@ -201,7 +201,7 @@ C:\Apps\AgentConsole\
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
 npm install
-npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.1.6.exe
+npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.1.7.exe
 ```
 
 Linux: `npm run dist:linux` → `.AppImage`. Mac: `npm run dist:mac` → `.dmg` (Mac 머신 필요).
