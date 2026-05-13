@@ -250,23 +250,17 @@ function promptForPath({ title, message, defaultValue, validate }) {
       title,
       backgroundColor: "#0b0d10",
       center: true,
-      alwaysOnTop: true,
-      show: false, // wait for ready-to-show so it doesn't flash blank
+      // Show immediately. ready-to-show can hang on some setups and leaves the
+      // window invisible forever; a brief blank flash is better than no window.
+      show: true,
       webPreferences: {
-        // Required for the inline script in PROMPT_HTML to use require('electron').
-        // sandbox defaults to true in modern Electron and blocks Node APIs even
-        // when nodeIntegration is true — this was the silent-OK-button bug.
         sandbox: false,
         contextIsolation: false,
         nodeIntegration: true,
       },
     });
     win.setMenu(null);
-    win.once("ready-to-show", () => {
-      log(`[prompt] window ready, showing`);
-      win.show();
-      win.focus();
-    });
+    win.focus();
     win.webContents.on("console-message", (_e, level, msg) => {
       log(`[prompt console] ${msg}`);
     });
@@ -688,14 +682,23 @@ async function createWindow() {
   await win.loadURL(serverUrl());
 }
 
-await startServer();
-
-app.whenReady().then(() => {
-  buildMenu();
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+// Run startServer + createWindow only after app is ready.
+// (Previous structure had 'await startServer()' at top level, which deadlocked
+// when startServer awaited app.whenReady() internally — Electron with ESM
+// entry waits for top-level await to finish before firing 'ready'.)
+app.whenReady().then(async () => {
+  try {
+    buildMenu();
+    await startServer();
+    await createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  } catch (e) {
+    log(`[bootstrap] failed: ${e && (e.stack || e.message)}`);
+    dialog.showErrorBox("Startup error", String(e && (e.stack || e.message) || e));
+    app.quit();
+  }
 });
 
 app.on("window-all-closed", () => {
