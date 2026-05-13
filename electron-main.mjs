@@ -5,6 +5,7 @@
 //   3. legacy   — REMOTE_URL env var: skip server, just point at that URL
 import { app, BrowserWindow, Menu, shell, dialog } from "electron";
 import { spawn } from "node:child_process";
+import { createServer as createNetServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
@@ -131,12 +132,49 @@ if (MODE === "local") {
   process.env.PORT = process.env.PORT || String(LocalPort);
 }
 
-const SERVER_URL =
-  MODE === "url"
-    ? REMOTE_URL
-    : MODE === "remote"
-      ? `http://localhost:${LocalPort}`
-      : `http://localhost:${process.env.PORT || LocalPort}`;
+// In remote mode the configured LocalPort can fail to bind on Windows
+// (reserved range from Hyper-V/WSL2, or held by another app). We probe
+// for a free port at startup and substitute if needed. Mutable so other
+// code paths can re-read it.
+let EffectiveLocalPort = LocalPort;
+
+function probeFreePort(port) {
+  return new Promise((resolve) => {
+    const s = createNetServer();
+    s.unref();
+    s.on("error", () => resolve(false));
+    s.listen(port, "127.0.0.1", () => {
+      s.close(() => resolve(true));
+    });
+  });
+}
+
+function pickFreePort() {
+  return new Promise((resolve, reject) => {
+    const s = createNetServer();
+    s.unref();
+    s.on("error", reject);
+    s.listen(0, "127.0.0.1", () => {
+      const port = s.address().port;
+      s.close(() => resolve(port));
+    });
+  });
+}
+
+async function resolveLocalPort() {
+  if (MODE !== "remote") return LocalPort;
+  if (await probeFreePort(LocalPort)) return LocalPort;
+  log(`[port] ${LocalPort} not bindable, picking a free port instead`);
+  const fresh = await pickFreePort();
+  log(`[port] using ${fresh} as local port`);
+  return fresh;
+}
+
+function serverUrl() {
+  if (MODE === "url") return REMOTE_URL;
+  if (MODE === "remote") return `http://localhost:${EffectiveLocalPort}`;
+  return `http://localhost:${process.env.PORT || LocalPort}`;
+}
 
 let sshChild = null;
 
@@ -152,7 +190,7 @@ async function startSshTunnel() {
     app.quit();
     return false;
   }
-  log(`[ssh] target=${RemoteSsh} forward=${LocalPort}→${RemotePort} path=${RemotePath}`);
+  log(`[ssh] target=${RemoteSsh} forward=${EffectiveLocalPort}→${RemotePort} path=${RemotePath}`);
 
   // The remote command does everything inline so it doesn't depend on the
   // server-side checkout being up-to-date. Echo markers let us see in the log
@@ -189,7 +227,7 @@ async function startSshTunnel() {
     "ssh",
     [
       "-L",
-      `${LocalPort}:localhost:${RemotePort}`,
+      `${EffectiveLocalPort}:localhost:${RemotePort}`,
       "-o",
       "ExitOnForwardFailure=yes",
       "-o",
@@ -221,6 +259,11 @@ async function startSshTunnel() {
 async function startServer() {
   if (MODE === "url") return; // legacy REMOTE_URL: do nothing
   if (MODE === "remote") {
+    try {
+      EffectiveLocalPort = await resolveLocalPort();
+    } catch (e) {
+      log(`[port] resolveLocalPort failed: ${e && e.message}`);
+    }
     const ok = await startSshTunnel();
     return ok;
   }
@@ -249,14 +292,14 @@ async function startServer() {
 }
 
 async function waitForServer(timeoutMs = 30000) {
-  log(`[health] polling ${SERVER_URL}/health for up to ${timeoutMs}ms`);
+  log(`[health] polling ${serverUrl()}/health for up to ${timeoutMs}ms`);
   const start = Date.now();
   let attempts = 0;
   let lastErr = null;
   while (Date.now() - start < timeoutMs) {
     attempts++;
     try {
-      const res = await fetch(SERVER_URL + "/health");
+      const res = await fetch(serverUrl() + "/health");
       if (res.ok) {
         log(`[health] OK after ${attempts} attempts (${Date.now() - start}ms)`);
         return true;
@@ -322,7 +365,7 @@ function buildMenu() {
       submenu: [
         {
           label: "Open in browser",
-          click: () => shell.openExternal(SERVER_URL),
+          click: () => shell.openExternal(serverUrl()),
         },
       ],
     },
@@ -338,7 +381,7 @@ async function createWindow() {
     const detail =
       MODE === "remote"
         ? `SSH connection to "${RemoteSsh}" didn't yield a healthy server within 30s.\n\nCheck:\n  • SSH key auth works (try 'ssh ${RemoteSsh}' in a terminal)\n  • Remote repo is at '${RemotePath}'\n  • Port ${RemotePort} is free on the remote\n  • Local port ${LocalPort} is free here\n\nLast SSH output:\n${sshTail || "(no output captured)"}\n\nFull log: ${logPath}`
-        : `Local server did not respond on ${SERVER_URL} within 30s.\n\nThis usually means the server crashed at startup.\n\nFull log: ${logPath}`;
+        : `Local server did not respond on ${serverUrl()} within 30s.\n\nThis usually means the server crashed at startup.\n\nFull log: ${logPath}`;
     dialog.showErrorBox("Server not responding", detail);
     app.quit();
     return;
@@ -355,7 +398,7 @@ async function createWindow() {
       nodeIntegration: false,
     },
   });
-  await win.loadURL(SERVER_URL);
+  await win.loadURL(serverUrl());
 }
 
 await startServer();
