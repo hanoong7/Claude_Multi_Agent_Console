@@ -297,9 +297,18 @@ async function waitForServer(timeoutMs = 30000) {
   let attempts = 0;
   let lastErr = null;
   while (Date.now() - start < timeoutMs) {
+    // detect SSH exit early — no point waiting if SSH died
+    if (MODE === "remote" && sshChild === null) {
+      log(`[health] aborting — SSH exited before server became ready`);
+      return false;
+    }
     attempts++;
     try {
-      const res = await fetch(serverUrl() + "/health");
+      // Per-attempt timeout: fetch has no built-in timeout, and a hung
+      // socket would otherwise block the whole 30s window in a single call.
+      const res = await fetch(serverUrl() + "/health", {
+        signal: AbortSignal.timeout(1500),
+      });
       if (res.ok) {
         log(`[health] OK after ${attempts} attempts (${Date.now() - start}ms)`);
         return true;
@@ -307,11 +316,6 @@ async function waitForServer(timeoutMs = 30000) {
       log(`[health] non-200 status=${res.status}`);
     } catch (e) {
       lastErr = e;
-    }
-    // detect SSH exit early — no point waiting if SSH died
-    if (MODE === "remote" && sshChild === null) {
-      log(`[health] aborting — SSH exited before server became ready`);
-      return false;
     }
     await new Promise((r) => setTimeout(r, 250));
   }
