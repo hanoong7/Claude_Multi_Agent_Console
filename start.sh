@@ -3,6 +3,11 @@ set -e
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
+# Non-interactive SSH ('ssh host "command"') does NOT load ~/.bashrc, so the
+# user's local install dirs are missing from PATH. Add the common ones so
+# tools like claude (typically at ~/.local/bin/claude) are found.
+export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"
+
 if ! command -v node >/dev/null 2>&1; then
   echo "Node.js is required (v20+). Install from https://nodejs.org and retry."
   exit 1
