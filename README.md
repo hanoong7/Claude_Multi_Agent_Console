@@ -1,4 +1,4 @@
-# Claude Multi-Agent Console &nbsp;·&nbsp; v0.2.0
+# Claude Multi-Agent Console &nbsp;·&nbsp; v0.2.1
 
 내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
@@ -62,9 +62,12 @@ claude auth status
 }
 ```
 
-`.exe` 더블클릭 → **워크스페이스 폴더 선택 다이얼로그**가 뜸 → 폴더 선택 → Electron 창에서 그 폴더를 대상으로 작업.
+`.exe` 더블클릭 → **워크스페이스 경로 입력창**이 뜸 → 작업할 폴더의 절대 경로 타이핑 → OK. 그 폴더가 작업 디렉토리가 됨.
 
-다음 실행부터는 다이얼로그가 마지막 선택을 미리 채워줘서 그냥 "Use this folder" 버튼만 누르면 됨. 매번 묻는 게 귀찮으면 `"askWorkspaceOnLaunch": false`로 바꿔두면 됩니다 (저장된 마지막 폴더 그대로 사용).
+- 경로가 존재하지 않거나 폴더가 아니면 에러 메시지 뜨고 다시 입력 요구
+- `~`로 시작하면 자동으로 홈 디렉토리 확장
+- 다음 실행부터 마지막 선택이 미리 채워짐 — 그냥 Enter 또는 OK만 누르면 됨
+- 매번 묻는 게 귀찮으면 `"askWorkspaceOnLaunch": false`로 (저장된 마지막 폴더 그대로 사용)
 
 ### Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (원격 서버를 데스크탑 창에서)
 
@@ -72,7 +75,7 @@ claude auth status
 
 ```
 [로컬 Windows]                                  [원격 Linux 서버]
-  ClaudeMultiAgentConsole-0.2.0.exe             ~/Claude_Multi_Agent_Console/
+  ClaudeMultiAgentConsole-0.2.1.exe             ~/Claude_Multi_Agent_Console/
   + config.json   ──SSH 터널──▶  ./start.sh    ──┐
        │                                          │ Claude CLI 호출
        │                                          ▼
@@ -141,7 +144,7 @@ Host myserver
 
 **C. .exe 다운로드 & 폴더 셋업**
 
-1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.2.0.exe` 다운로드
+1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.2.1.exe` 다운로드
 2. 본인이 원하는 위치에 폴더 만듬 (예: `C:\Apps\AgentConsole\`)
 3. 다운받은 `.exe`를 그 폴더에 넣기
 4. **같은 폴더에** `config.json` 파일을 만들어 아래 내용 저장:
@@ -162,7 +165,7 @@ Host myserver
 
 ```
 C:\Apps\AgentConsole\
-├── ClaudeMultiAgentConsole-0.2.0.exe
+├── ClaudeMultiAgentConsole-0.2.1.exe
 └── config.json
 ```
 
@@ -190,6 +193,8 @@ C:\Apps\AgentConsole\
 5. Electron 창 표시
 6. 창 닫으면 SSH 터널 + 원격 서버 같이 정리
 
+원격 모드에서도 실행 시 **워크스페이스 경로 입력창**이 떠요. 거기에 원격 서버의 절대 경로를 입력하면 됩니다 (예: `/home/myname/my-project`). SSH로 자동 검증해서 없는 경로면 에러 띄움. `"askWorkspaceOnLaunch": false`로 끄거나, config.json의 `remote.workspace`에 미리 적어두면 매번 묻지 않아요.
+
 **잘 안 되면** 빨간 에러 다이얼로그가 떠요. 자주 보이는 원인:
 - "SSH connection... didn't yield a healthy server" → 위 사전 준비 A/B 다시 확인 (PowerShell에서 `ssh myserver` 했을 때 비번 없이 들어가는지)
 - 서버에 Node.js 없음 → 서버에 `node --version` 안 되면 Node 20+ 설치
@@ -205,7 +210,7 @@ C:\Apps\AgentConsole\
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
 npm install
-npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.2.0.exe
+npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.2.1.exe
 ```
 
 Linux: `npm run dist:linux` → `.AppImage`. Mac: `npm run dist:mac` → `.dmg` (Mac 머신 필요).

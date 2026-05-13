@@ -3,12 +3,13 @@
 //   1. "local"  — start the bundled server in-process, open a window on it
 //   2. "remote" — spawn SSH tunnel + remote ./start.sh, open a window on the tunneled port
 //   3. legacy   — REMOTE_URL env var: skip server, just point at that URL
-import { app, BrowserWindow, Menu, shell, dialog } from "electron";
+import { app, BrowserWindow, Menu, shell, dialog, ipcMain } from "electron";
 import { spawn } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -128,44 +129,196 @@ function saveWorkspace(p) {
   }
 }
 
+// Validate a workspace path. Returns null if OK, or an error message.
+function validateLocalPath(p) {
+  if (!p || !p.trim()) return "Path is required.";
+  const expanded = p.replace(/^~/, homedir());
+  if (!existsSync(expanded)) return `Path doesn't exist: ${expanded}`;
+  try {
+    if (!statSync(expanded).isDirectory())
+      return `Not a directory: ${expanded}`;
+  } catch (e) {
+    return `Could not access path: ${e.message}`;
+  }
+  return null;
+}
+
+function validateRemotePath(host, p) {
+  return new Promise((resolve) => {
+    if (!p || !p.trim()) return resolve("Path is required.");
+    const escaped = p.replace(/'/g, "'\\''");
+    const cmd = `[ -d '${escaped}' ] && echo OK || echo MISSING`;
+    const proc = spawn(
+      "ssh",
+      ["-o", "ConnectTimeout=10", "-o", "BatchMode=yes", host, cmd],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+    let out = "";
+    let err = "";
+    proc.stdout.on("data", (d) => (out += d.toString()));
+    proc.stderr.on("data", (d) => (err += d.toString()));
+    proc.on("exit", (code) => {
+      if (code !== 0)
+        resolve(
+          `Could not reach ${host}: ${err.trim().split("\n")[0] || `ssh exit ${code}`}`
+        );
+      else if (out.includes("OK")) resolve(null);
+      else resolve(`Path doesn't exist on ${host}: ${p}`);
+    });
+    proc.on("error", (e) => resolve(`SSH spawn error: ${e.message}`));
+  });
+}
+
+const PROMPT_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Workspace</title>
+<style>
+  html, body { background: #0b0d10; color: #e6e8eb; font-family: -apple-system, "Segoe UI", sans-serif; padding: 0; margin: 0; }
+  body { padding: 22px 24px; }
+  h2 { font-size: 14px; margin: 0 0 6px; color: #fff; font-weight: 600; }
+  p { font-size: 12px; color: rgba(230,232,235,0.6); margin: 0 0 16px; line-height: 1.4; }
+  input { width: 100%; padding: 10px 12px; background: #13171d; border: 1px solid rgba(255,255,255,0.12); color: white; border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; box-sizing: border-box; }
+  input:focus { outline: none; border-color: rgba(52,211,153,0.5); }
+  .err { color: #f87171; font-size: 12px; margin-top: 8px; min-height: 14px; line-height: 1.4; word-break: break-all; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  button { padding: 8px 16px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.3); color: white; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; }
+  button.primary { background: rgba(52,211,153,0.2); border-color: rgba(52,211,153,0.4); color: #a7f3d0; }
+  button:hover { background: rgba(255,255,255,0.08); }
+  button.primary:hover { background: rgba(52,211,153,0.3); }
+</style></head><body>
+<h2 id="title">Workspace</h2>
+<p id="message"></p>
+<input id="input" type="text" autocomplete="off" spellcheck="false" />
+<div class="err" id="err"></div>
+<div class="actions">
+  <button onclick="cancel()">Cancel</button>
+  <button class="primary" onclick="submit()">OK</button>
+</div>
+<script>
+const { ipcRenderer } = require('electron');
+const inp = document.getElementById('input');
+const errEl = document.getElementById('err');
+const okBtn = document.querySelector('button.primary');
+let pending = false;
+ipcRenderer.on('init', (_, { title, message, defaultValue }) => {
+  document.getElementById('title').textContent = title;
+  document.getElementById('message').textContent = message;
+  inp.value = defaultValue || '';
+  setTimeout(() => { inp.focus(); inp.select(); }, 30);
+});
+ipcRenderer.on('error', (_, msg) => {
+  pending = false;
+  okBtn.disabled = false;
+  okBtn.textContent = 'OK';
+  errEl.textContent = msg;
+});
+function submit() {
+  if (pending) return;
+  pending = true;
+  errEl.textContent = '';
+  okBtn.disabled = true;
+  okBtn.textContent = 'Checking…';
+  ipcRenderer.send('prompt-submit', inp.value);
+}
+function cancel() {
+  ipcRenderer.send('prompt-cancel');
+}
+inp.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submit();
+  if (e.key === 'Escape') cancel();
+});
+</script></body></html>`;
+
+function promptForPath({ title, message, defaultValue, validate }) {
+  return new Promise(async (resolveP) => {
+    await app.whenReady();
+    const win = new BrowserWindow({
+      width: 560,
+      height: 280,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title,
+      backgroundColor: "#0b0d10",
+      webPreferences: {
+        contextIsolation: false,
+        nodeIntegration: true,
+      },
+    });
+    win.setMenu(null);
+
+    let resolved = false;
+    const cleanup = () => {
+      ipcMain.removeListener("prompt-submit", onSubmit);
+      ipcMain.removeListener("prompt-cancel", onCancel);
+    };
+    const onSubmit = async (_e, value) => {
+      const errMsg = await validate(value);
+      if (errMsg) {
+        if (!win.isDestroyed()) win.webContents.send("error", errMsg);
+        return;
+      }
+      resolved = true;
+      cleanup();
+      if (!win.isDestroyed()) win.close();
+      resolveP(value);
+    };
+    const onCancel = () => {
+      resolved = true;
+      cleanup();
+      if (!win.isDestroyed()) win.close();
+      resolveP(null);
+    };
+    ipcMain.on("prompt-submit", onSubmit);
+    ipcMain.on("prompt-cancel", onCancel);
+
+    win.webContents.on("did-finish-load", () => {
+      win.webContents.send("init", { title, message, defaultValue });
+    });
+    win.on("closed", () => {
+      if (!resolved) {
+        cleanup();
+        resolveP(null);
+      }
+    });
+
+    win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(PROMPT_HTML));
+  });
+}
+
 async function chooseWorkspace() {
   const ask = cfg.data.askWorkspaceOnLaunch !== false; // default: true
   const saved = loadSavedWorkspace();
   const mode = cfg.data.mode || "local";
-
-  if (mode === "remote") {
-    // Remote mode — we can't browse a remote filesystem easily from a
-    // local folder dialog. Use config.json's remote.workspace or fall
-    // back to no override (server uses ./workspace next to app.js).
-    const explicit = cfg.data.remote?.workspace || null;
-    log(`[workspace] remote mode, using config remote.workspace: ${explicit || "(default)"}`);
-    return explicit;
-  }
 
   if (!ask && saved) {
     log(`[workspace] askWorkspaceOnLaunch=false, using saved: ${saved}`);
     return saved;
   }
 
-  await app.whenReady();
-  log(`[workspace] prompting (saved default: ${saved || "(none)"})`);
-  const result = await dialog.showOpenDialog({
-    title: "Select workspace folder",
+  const defaultValue =
+    saved || cfg.data.remote?.workspace || (mode === "local" ? homedir() : "");
+  log(`[workspace] prompting (default: ${defaultValue || "(empty)"})`);
+
+  const picked = await promptForPath({
+    title: mode === "remote" ? "Remote workspace path" : "Local workspace path",
     message:
-      "Choose the folder Claude should work in (creating files, reading code).\nThis will be the working directory for all delegations.",
-    defaultPath: saved || app.getPath("home"),
-    properties: ["openDirectory", "createDirectory", "dontAddToRecent"],
-    buttonLabel: "Use this folder",
+      mode === "remote"
+        ? `Type the absolute path on ${RemoteSsh || "the remote server"} where workers should operate (e.g. /home/you/projects/myapp).`
+        : "Type the absolute path to the folder you want Claude to work in. ~ is expanded to your home directory.",
+    defaultValue,
+    validate: (value) =>
+      mode === "remote"
+        ? validateRemotePath(RemoteSsh, value)
+        : Promise.resolve(validateLocalPath(value)),
   });
 
-  if (result.canceled) {
-    log(`[workspace] dialog canceled, using saved fallback: ${saved}`);
+  if (picked == null) {
+    log(`[workspace] prompt canceled — using saved fallback: ${saved || "(none)"}`);
     return saved;
   }
-  const picked = result.filePaths[0];
-  log(`[workspace] picked: ${picked}`);
-  saveWorkspace(picked);
-  return picked;
+  const expanded = mode === "local" ? picked.replace(/^~/, homedir()) : picked;
+  log(`[workspace] picked: ${expanded}`);
+  saveWorkspace(expanded);
+  return expanded;
 }
 
 const MODE =
