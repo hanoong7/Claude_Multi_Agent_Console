@@ -111,6 +111,13 @@
       "title": "코딩 테스트",
       "createdAt": 1778569077230,
       "lastUsedAt": 1778571834798
+    },
+    {
+      "id": "386a2f66-0d42-416d-9dbe-16d2dc67b95a",
+      "claudeSessionId": "4e844c3c-aa76-4813-b68d-d405e298151d",
+      "title": "New Session",
+      "createdAt": 1778638674045,
+      "lastUsedAt": 1778638683401
     }
   ],
   "orchestrator": {

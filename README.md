@@ -1,10 +1,10 @@
 # Claude Multi-Agent Console
 
-내 컴퓨터에서 돌아가는 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
+> **v0.1.0** — pre-alpha 데모. 지인용. 거친 부분 있어요.
+
+내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
 전부 로컬에서 동작합니다. **본인** Claude Code OAuth 로그인을 그대로 씁니다 (사용량은 본인 Pro/Max 플랜에서 차감, **API 키 필요 없음**).
-
-> 상태: pre-alpha 데모. 지인용. 거친 부분 있어요.
 
 ---
 
@@ -17,133 +17,100 @@
 - **세션 & 히스토리** — 여러 채팅 thread를 탭으로 전환, 재시작에도 유지
 - **활동 패널** — 각 위임이 카드로 표시 (워커 이름, 색, 진행률, 결과)
 - **상태 미리보기** — 예정 / 진행중 / 완료 열로 분류. 위임 전에 오케스트레이터가 계획을 먼저 선언
+- **상단 정보 바** — 로그인한 이메일·요금제·작업 디렉토리 즉시 확인
 
 데모 상태가 같이 들어있어요 (한국어 팀/워커 예시) — 어떻게 세팅하는지 바로 볼 수 있습니다.
 
 ---
 
-## 요구사항
+## 공통 요구사항 (어느 OS든)
 
 | 무엇                   | 왜                          | 설치                                 |
 | --------------------- | --------------------------- | ----------------------------------- |
-| **Node.js 20+**       | 로컬 서버 런타임             | <https://nodejs.org>                |
+| **Node.js 20+**       | 런타임                       | <https://nodejs.org>                |
 | **Claude Code CLI**   | 실제 Claude가 돌아가는 도구  | <https://claude.com/code>           |
 | **Claude Pro / Max**  | Claude Code 로그인에 필요   | <https://claude.ai/pricing>         |
+| **Git**               | 레포 클론                    | <https://git-scm.com>               |
 
-macOS, Linux, Windows (10/11) 모두 지원.
-
----
-
-## 설치
-
-```bash
-git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
-cd Claude_Multi_Agent_Console
-npm install
-```
-
-`npm install`은 데스크탑 앱용 Electron만 설치합니다 (~200MB). 서버는 이미 번들됨.
-
-> 데스크탑 앱 안 쓰고 그냥 웹브라우저로 쓰려면 `npm install` 생략 가능 — 아래 "웹브라우저로만 쓰기" 참고.
-
----
-
-## 실행 시나리오 — 어디서 뭐 돌릴지
-
-**A. 같은 머신에서 모두 돌리기 (일반)**
-
-본인 PC에서 서버 + GUI 모두 실행. `claude` CLI, Node, Electron(선택) 다 본인 PC에 설치.
-
-**B. 원격 서버 + 로컬 데스크탑 (개발자가 자주 쓰는 패턴)**
-
-- 서버는 SSH로 들어간 원격 머신에서 실행 (claude CLI도 거기 설치/로그인)
-- 본인 로컬 PC에서 SSH 터널만 열고 데스크탑 창 띄움
-
-```bash
-# 원격 서버에서
-./start.sh                            # 또는 npm run start:web
-
-# 로컬 PC 터미널에서
-ssh -L 8787:localhost:8787 user@server   # 터널 유지
-# 다른 로컬 터미널
-REMOTE_URL=http://localhost:8787 npm start
-```
-
-> ⚠ **Electron은 헤드리스 서버(Docker 등)에선 못 돌아요.** 디스플레이가 필요해요. 시나리오 B에선 서버는 `start.sh`(웹모드)만, Electron은 본인 PC에서만.
-
----
-
-## 처음 한 번만 설정
-
-**1. Claude Code 로그인** (아무 터미널에서 한 번만):
+**Claude Code 로그인 (한 번만)** — 어느 OS든 동일:
 
 ```bash
 claude
 ```
 
-브라우저가 열리면서 OAuth 진행됩니다. 본인 Claude 계정으로 로그인하세요. 끝나면 터미널 닫아도 됩니다. 이 머신의 다른 Claude 도구들 (이 앱 포함)도 같은 로그인을 씁니다.
-
-확인:
+브라우저가 열리며 OAuth 진행. 본인 Claude 계정으로 로그인. 확인:
 
 ```bash
 claude auth status
 ```
 
-`"loggedIn": true` 가 보이면 OK.
+`"loggedIn": true` 보이면 OK.
 
-**2. 콘솔 실행**:
+---
 
-### 데스크탑 앱 (권장, 로컬에서 실행)
+## OS별 설치 & 실행
 
-```bash
+### 🪟 Windows (Electron 데스크탑 앱)
+
+PowerShell 또는 cmd:
+
+```powershell
+git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
+cd Claude_Multi_Agent_Console
+npm install
 npm start
 ```
 
-Electron 창이 열리면서 바로 사용 가능. macOS / Linux / Windows 동일.
+Electron 창이 열립니다. 끝.
 
-원격 서버를 가리키는 데스크탑 창으로 띄우려면 (SSH 터널 사용 중일 때):
+> **WSL 안에서는?** WSLg가 설정돼 있어야 GUI가 떠요 (Windows 11 + WSL2면 기본 활성화). 안 되면 `npm run start:web` 후 `http://localhost:8787`을 브라우저로.
 
-**macOS / Linux / WSL**
+---
+
+### 🐧 Linux (Electron 데스크탑 앱)
+
 ```bash
-REMOTE_URL=http://localhost:8787 npm start
+git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
+cd Claude_Multi_Agent_Console
+npm install
+npm start
 ```
 
-**Windows PowerShell**
-```powershell
-$env:REMOTE_URL="http://localhost:8787"; npm start
+> **헤드리스 서버 / SSH-only / Docker 컨테이너**라면 Electron 못 돕니다. 다음 중 하나:
+> - `npm run start:web` 으로 웹서버만 돌리고 브라우저로 접속 (SSH 터널 `ssh -L 8787:localhost:8787 user@host` 후 로컬에서 `http://localhost:8787`)
+> - 또는 로컬 PC에서 `REMOTE_URL=http://localhost:8787 npm start` (Electron이 SSH-터널된 원격 서버를 가리킴)
+
+**시스템 라이브러리 누락 에러** (`libnspr4.so` 등):
+```bash
+# Debian/Ubuntu
+sudo apt install libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libasound2
+
+# Fedora/RHEL
+sudo dnf install nss nspr atk at-spi2-atk cups-libs mesa-libgbm alsa-lib
 ```
 
-**Windows cmd.exe**
-```cmd
-set REMOTE_URL=http://localhost:8787 && npm start
+---
+
+### 🍎 macOS (Electron 우선, 안 되면 웹)
+
+```bash
+git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
+cd Claude_Multi_Agent_Console
+npm install
+npm start
 ```
 
-이 모드는 로컬 서버를 띄우지 않고 그 URL로만 창을 엽니다. 별도 SSH 터널(`ssh -L 8787:localhost:8787 ...`)이 살아있어야 합니다.
+처음 실행 시 Gatekeeper가 "확인되지 않은 개발자" 경고를 띄울 수 있어요 — 시스템 설정 → 보안 및 개인 정보 보호 → "확인 없이 열기" 클릭.
 
-### 웹브라우저로만 쓰기 (Electron 없이)
-
-`npm install` 안 했어도 됨. Node 20+만 있으면:
-
-**macOS / Linux**
+**Electron이 안 뜨거나 충돌하면 웹 모드로**:
 
 ```bash
 ./start.sh
 ```
 
-**Windows**
+그 다음 브라우저로 <http://localhost:8787> 열기. 동일한 UI예요 — 단지 별도 창이 아닐 뿐.
 
-`start.bat` 더블클릭, 또는 PowerShell / cmd에서 `start.bat`
-
-런처가 이런 출력을 보여줍니다:
-
-```
-[seed] copied examples/agents.json → data/agents.json
-[server] listening on :8787  cwd=.../workspace
-[server] open http://localhost:8787 in your browser
-[auth] OK · you@example.com · max
-```
-
-브라우저에서 <http://localhost:8787> 열기.
+Safari보다 Chrome/Edge 권장 (WebSocket 자동 재연결 동작이 좀 더 안정적).
 
 ---
 
@@ -154,7 +121,7 @@ set REMOTE_URL=http://localhost:8787 && npm start
 배포 패키지에 예제 팀들 (`coding-team` 등)과 과거 채팅 세션 몇 개가 들어있습니다. 클릭해보면서 구조를 익혀보세요. 깨끗하게 시작하려면:
 
 - 탭의 **✕** 로 세션 삭제
-- 또는 통째로 초기화: 서버 끄고 `app.js` 옆 `data/`와 `workspace/` 폴더 삭제, 다시 실행 — `examples/`에서 자동으로 다시 시드
+- 또는 통째로 초기화: 앱 끄고 `app.js` 옆 `data/`와 `workspace/` 폴더 삭제, 다시 실행 — `examples/`에서 자동으로 다시 시드
 
 ### 본인 팀 정의
 
@@ -183,26 +150,31 @@ set REMOTE_URL=http://localhost:8787 && npm start
 
 ### 작업 디렉토리 (workspace)
 
-기본적으로 오케스트레이터와 워커들은 `app.js` 옆 `./workspace/` 안에서 작업합니다. 생성하는 파일 (예: 자동 생성된 `fizzbuzz.py`)이 여기 떨어집니다.
+기본적으로 오케스트레이터와 워커들은 `app.js` 옆 `./workspace/` 안에서 작업합니다. 생성하는 파일이 여기 떨어집니다. 상단 정보 바에 현재 경로 표시됨 (📁 아이콘).
 
 다른 디렉토리 (본인 프로젝트 등)에서 작업하게 하려면 실행 전에 `CLAUDE_CWD` 환경변수 설정:
 
 **macOS / Linux**
 
 ```bash
-CLAUDE_CWD=/path/to/my/project ./start.sh
+CLAUDE_CWD=/path/to/my/project npm start
 ```
 
-**Windows (cmd)**
+**Windows PowerShell**
+
+```powershell
+$env:CLAUDE_CWD="C:\path\to\my\project"; npm start
+```
+
+**Windows cmd**
 
 ```cmd
-set CLAUDE_CWD=C:\path\to\my\project
-start.bat
+set CLAUDE_CWD=C:\path\to\my\project && npm start
 ```
 
 ### 포트
 
-기본 `8787`. 바꾸려면 `PORT=9000 ./start.sh` (Windows는 `PORT` 환경변수 set).
+기본 `8787`. 바꾸려면 `PORT=...` 환경변수 설정 (위 CLAUDE_CWD와 동일한 패턴).
 
 ---
 
@@ -235,11 +207,11 @@ release-folder/
 
 **워커가 워크플로 무시 / 위임 안 함** — 각 워커의 `description`이 트리거 키워드를 포함하는지 확인 ("Use this team for any code change..." 식). 그리고 팀에 `planner / coder / reviewer` 기본 kind들이 있어야 자동 워크플로가 동작합니다.
 
-**`libnspr4.so: cannot open shared object file`** — Electron을 헤드리스 환경(Docker 컨테이너, SSH-only 서버 등)에서 띄우려고 한 거예요. Electron은 디스플레이가 있는 본인 PC에서만 실행하세요. 서버 쪽에선 `./start.sh` (웹 모드)만.
+**`libnspr4.so: cannot open shared object file`** — Electron을 헤드리스 환경(Docker, SSH-only 서버)에서 띄우려고 한 거예요. 위의 Linux 섹션 참고. 디스플레이 있는 PC에서만.
 
 **포트 점유 충돌** — `PORT=...` 로 다른 포트 사용.
 
-**완전히 처음부터 다시** — 서버 끄고 `data/` (선택적으로 `workspace/`도) 삭제, 다시 실행.
+**완전히 처음부터 다시** — 앱 끄고 `data/` (선택적으로 `workspace/`도) 삭제, 다시 실행.
 
 ---
 
