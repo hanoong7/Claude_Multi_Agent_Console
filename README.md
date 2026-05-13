@@ -1,6 +1,4 @@
-# Claude Multi-Agent Console
-
-> **v0.1.0** — pre-alpha 데모. 지인용. 거친 부분 있어요.
+# Claude Multi-Agent Console &nbsp;·&nbsp; v0.1.0
 
 내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
@@ -23,7 +21,7 @@
 
 ---
 
-## 공통 요구사항 (어느 OS든)
+## 공통 요구사항
 
 | 무엇                   | 왜                          | 설치                                 |
 | --------------------- | --------------------------- | ----------------------------------- |
@@ -48,7 +46,7 @@ claude auth status
 
 ---
 
-## 시나리오 1. 로컬 Windows 단독 (Electron 데스크탑 앱)
+## Quick start 1. 로컬 Windows 단독 (Electron 데스크탑 앱)
 
 PowerShell 또는 cmd:
 
@@ -63,34 +61,13 @@ Electron 창이 열립니다. 끝.
 
 ---
 
-## 시나리오 2. 로컬 Linux 단독 (Electron 데스크탑 앱)
-
-```bash
-git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
-cd Claude_Multi_Agent_Console
-npm install
-npm start
-```
-
-**시스템 라이브러리 누락 에러** (`libnspr4.so` 등)가 뜨면:
-```bash
-# Debian/Ubuntu
-sudo apt install libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libasound2
-
-# Fedora/RHEL
-sudo dnf install nss nspr atk at-spi2-atk cups-libs mesa-libgbm alsa-lib
-```
-
----
-
-## 시나리오 3. GUI 없는 Linux 서버 + 로컬 Windows (Electron이 원격 서버 가리킴)
+## Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (Electron이 원격 서버 가리킴)
 
 서버에 Claude Code CLI를 깔고 로그인한 상태에서, 로컬 Windows의 데스크탑 창으로 사용하는 패턴. SSH 터널로 포트만 가져옵니다.
 
 ### A. 원격 Linux 서버에서 (한 번만)
 
 ```bash
-# 서버 안에서
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
 
@@ -115,8 +92,6 @@ npm install
 ```powershell
 ssh -p <서버포트> -L 8787:localhost:8787 <user>@<server>
 ```
-
-> 이미 SSH 셋업이 돼 있고 매번 같은 서버라면 `~/.ssh/config`에 항목 추가하면 짧게 가능 — 이 README 끝에 팁 참고.
 
 이 창은 그대로 두기. SSH 안에서 서버가 안 떠 있으면 `./start.sh` 실행.
 
@@ -228,8 +203,6 @@ release-folder/
 
 **워커가 워크플로 무시 / 위임 안 함** — 각 워커의 `description`이 트리거 키워드를 포함하는지 확인. 그리고 팀에 `planner / coder / reviewer` 기본 kind들이 있어야 자동 워크플로가 동작.
 
-**`libnspr4.so: cannot open shared object file`** — Linux 시스템 라이브러리 누락. 위 시나리오 2의 설치 명령 참고. GUI 없는 서버라면 시나리오 3로.
-
 **포트 점유 충돌** — `PORT=...` 로 다른 포트 사용.
 
 **완전히 처음부터 다시** — 앱 끄고 `data/` (선택적으로 `workspace/`도) 삭제, 다시 실행.
@@ -246,7 +219,7 @@ release-folder/
 
 ## 한계 / 알려진 이슈
 
-- **소스 코드는 포함되지 않음.** 데모용 사전 빌드 번들입니다.
+- **소스 코드는 포함되지 않음.** 사전 빌드 번들입니다.
 - 같은 서버에 여러 브라우저 탭을 띄우면 한 백엔드 연결을 공유 — 동작은 하지만 세션 간 동시 실행은 안 됨
 - "예정 (pending)" 미리보기는 오케스트레이터가 지시를 따라야 동작. 가끔 plan 태그를 빼먹습니다.
 - 모바일 레이아웃 없음
