@@ -169,6 +169,8 @@ function validateRemotePath(host, p) {
   });
 }
 
+// Renderer-side HTML for the workspace prompt window. Inline so we don't
+// need to ship a separate file inside the asar package. Loaded via data: URL.
 const PROMPT_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Workspace</title>
 <style>
   html, body { background: #0b0d10; color: #e6e8eb; font-family: -apple-system, "Segoe UI", sans-serif; padding: 0; margin: 0; }
@@ -193,7 +195,15 @@ const PROMPT_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Wor
   <button class="primary" onclick="submit()">OK</button>
 </div>
 <script>
-const { ipcRenderer } = require('electron');
+try {
+  console.log('[prompt-renderer] script started, requiring electron…');
+  var { ipcRenderer } = require('electron');
+  console.log('[prompt-renderer] ipcRenderer acquired');
+} catch (e) {
+  document.body.innerHTML = '<div style="color:#f87171;padding:20px;font-family:monospace">' +
+    'Failed to load electron.ipcRenderer:<br>' + (e && e.message) + '</div>';
+  throw e;
+}
 const inp = document.getElementById('input');
 const errEl = document.getElementById('err');
 const okBtn = document.querySelector('button.primary');
@@ -230,20 +240,36 @@ inp.addEventListener('keydown', (e) => {
 function promptForPath({ title, message, defaultValue, validate }) {
   return new Promise(async (resolveP) => {
     await app.whenReady();
+    log(`[prompt] opening window: ${title}`);
     const win = new BrowserWindow({
       width: 560,
-      height: 280,
+      height: 300,
       resizable: false,
       minimizable: false,
       maximizable: false,
       title,
       backgroundColor: "#0b0d10",
+      center: true,
+      alwaysOnTop: true,
+      show: false, // wait for ready-to-show so it doesn't flash blank
       webPreferences: {
+        // Required for the inline script in PROMPT_HTML to use require('electron').
+        // sandbox defaults to true in modern Electron and blocks Node APIs even
+        // when nodeIntegration is true — this was the silent-OK-button bug.
+        sandbox: false,
         contextIsolation: false,
         nodeIntegration: true,
       },
     });
     win.setMenu(null);
+    win.once("ready-to-show", () => {
+      log(`[prompt] window ready, showing`);
+      win.show();
+      win.focus();
+    });
+    win.webContents.on("console-message", (_e, level, msg) => {
+      log(`[prompt console] ${msg}`);
+    });
 
     let resolved = false;
     const cleanup = () => {
@@ -251,17 +277,21 @@ function promptForPath({ title, message, defaultValue, validate }) {
       ipcMain.removeListener("prompt-cancel", onCancel);
     };
     const onSubmit = async (_e, value) => {
+      log(`[prompt] submit: ${value}`);
       const errMsg = await validate(value);
       if (errMsg) {
+        log(`[prompt] invalid: ${errMsg}`);
         if (!win.isDestroyed()) win.webContents.send("error", errMsg);
         return;
       }
+      log(`[prompt] valid, closing`);
       resolved = true;
       cleanup();
       if (!win.isDestroyed()) win.close();
       resolveP(value);
     };
     const onCancel = () => {
+      log(`[prompt] cancel`);
       resolved = true;
       cleanup();
       if (!win.isDestroyed()) win.close();
@@ -271,9 +301,11 @@ function promptForPath({ title, message, defaultValue, validate }) {
     ipcMain.on("prompt-cancel", onCancel);
 
     win.webContents.on("did-finish-load", () => {
+      log(`[prompt] DOM loaded, sending init`);
       win.webContents.send("init", { title, message, defaultValue });
     });
     win.on("closed", () => {
+      log(`[prompt] window closed (resolved=${resolved})`);
       if (!resolved) {
         cleanup();
         resolveP(null);
