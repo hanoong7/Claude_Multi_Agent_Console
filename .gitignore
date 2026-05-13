@@ -3,6 +3,7 @@ workspace/
 node_modules/
 dist-installers/
 config.json
+workspace.json
 *.log
 .DS_Store
 package-lock.json

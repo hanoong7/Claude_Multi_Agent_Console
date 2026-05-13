@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -95,6 +95,79 @@ if (!cfg.path && cfg.searched) {
 log(`[config] mode: ${cfg.data.mode || "local"}`);
 if (cfg.data.remote) log(`[config] remote: ${JSON.stringify(cfg.data.remote)}`);
 
+// ─── Workspace selection ─────────────────────────────────────────────────────
+// On launch we let the user pick which directory the orchestrator/workers
+// operate on. The choice is saved so subsequent launches start from that
+// folder as the default. config.json's askWorkspaceOnLaunch (default true)
+// controls whether we prompt; set false to silently reuse the saved value.
+function getStateDir() {
+  return (
+    process.env.PORTABLE_EXECUTABLE_DIR ||
+    (app.isPackaged ? dirname(app.getPath("exe")) : __dirname)
+  );
+}
+function workspaceStatePath() {
+  return join(getStateDir(), "workspace.json");
+}
+function loadSavedWorkspace() {
+  try {
+    const raw = readFileSync(workspaceStatePath(), "utf8");
+    return JSON.parse(raw).workspace || null;
+  } catch {
+    return null;
+  }
+}
+function saveWorkspace(p) {
+  try {
+    writeFileSync(
+      workspaceStatePath(),
+      JSON.stringify({ workspace: p }, null, 2) + "\n"
+    );
+  } catch (e) {
+    log(`[workspace] save failed: ${e.message}`);
+  }
+}
+
+async function chooseWorkspace() {
+  const ask = cfg.data.askWorkspaceOnLaunch !== false; // default: true
+  const saved = loadSavedWorkspace();
+  const mode = cfg.data.mode || "local";
+
+  if (mode === "remote") {
+    // Remote mode — we can't browse a remote filesystem easily from a
+    // local folder dialog. Use config.json's remote.workspace or fall
+    // back to no override (server uses ./workspace next to app.js).
+    const explicit = cfg.data.remote?.workspace || null;
+    log(`[workspace] remote mode, using config remote.workspace: ${explicit || "(default)"}`);
+    return explicit;
+  }
+
+  if (!ask && saved) {
+    log(`[workspace] askWorkspaceOnLaunch=false, using saved: ${saved}`);
+    return saved;
+  }
+
+  await app.whenReady();
+  log(`[workspace] prompting (saved default: ${saved || "(none)"})`);
+  const result = await dialog.showOpenDialog({
+    title: "Select workspace folder",
+    message:
+      "Choose the folder Claude should work in (creating files, reading code).\nThis will be the working directory for all delegations.",
+    defaultPath: saved || app.getPath("home"),
+    properties: ["openDirectory", "createDirectory", "dontAddToRecent"],
+    buttonLabel: "Use this folder",
+  });
+
+  if (result.canceled) {
+    log(`[workspace] dialog canceled, using saved fallback: ${saved}`);
+    return saved;
+  }
+  const picked = result.filePaths[0];
+  log(`[workspace] picked: ${picked}`);
+  saveWorkspace(picked);
+  return picked;
+}
+
 const MODE =
   process.env.REMOTE_URL ? "url" : (cfg.data.mode || "local");
 const REMOTE_URL = process.env.REMOTE_URL || null;
@@ -116,15 +189,17 @@ if (MODE === "local") {
     // dev tree (env/)
     process.env.STATIC_DIR = DEV_DIST;
     process.env.DATA_DIR = DEV_SERVER_DATA;
-    process.env.CLAUDE_CWD = process.env.CLAUDE_CWD || resolve(__dirname, "..");
+    // CLAUDE_CWD will be set later from chooseWorkspace(); fall back here
+    // only when chooseWorkspace returns nothing.
+    process.env.CLAUDE_CWD =
+      process.env.CLAUDE_CWD || resolve(__dirname, "..");
   } else if (app.isPackaged) {
     // Packaged build: app.js + public/ live inside asar (read-only).
     // Put user data + workspace alongside the executable, not inside asar.
     const writeRoot =
       process.env.PORTABLE_EXECUTABLE_DIR || dirname(app.getPath("exe"));
     process.env.DATA_DIR = process.env.DATA_DIR || join(writeRoot, "data");
-    process.env.CLAUDE_CWD =
-      process.env.CLAUDE_CWD || join(writeRoot, "workspace");
+    // CLAUDE_CWD intentionally NOT set here — chooseWorkspace() decides.
   }
   // release tree (release/, not packaged) — server defaults already point
   // to ./public, ./data, ./workspace next to electron-main.mjs.
@@ -201,6 +276,10 @@ async function startSshTunnel() {
   //     trap propagates SIGTERM to node so it dies cleanly. This is what
   //     fixed the zombie-node-after-disconnect problem.
   const PID_FILE = `$HOME/.claude-multi-agent-${RemotePort}.pid`;
+  const remoteWorkspace = cfg.data.remote?.workspace || "";
+  const cwdEnv = remoteWorkspace
+    ? `CLAUDE_CWD='${remoteWorkspace.replace(/'/g, "'\\''")}' `
+    : "";
   const remoteCmd = [
     `export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"`,
     `echo "[remote] pwd=$(pwd)"`,
@@ -209,6 +288,9 @@ async function startSshTunnel() {
     `command -v node >/dev/null 2>&1 || { echo "[remote] node missing in PATH=$PATH"; exit 12; }`,
     `echo "[remote] node=$(node --version 2>&1)"`,
     `[ -f app.js ] || { echo "[remote] app.js missing in $(pwd)"; exit 13; }`,
+    remoteWorkspace
+      ? `echo "[remote] workspace=${remoteWorkspace}"`
+      : `echo "[remote] workspace=(default)"`,
     // Cleanup: if our pidfile points to a live process, kill it
     `if [ -f "${PID_FILE}" ]; then ` +
       `OLD_PID=$(cat "${PID_FILE}" 2>/dev/null); ` +
@@ -222,7 +304,7 @@ async function startSshTunnel() {
     // Note: 'cmd &' cannot be followed by ';' (bash syntax error), so we
     // collapse '... &' and '$!' capture into a single statement.
     `echo "[remote] launching node"`,
-    `PROD=1 PORT=${RemotePort} node app.js & NODE_PID=$!`,
+    `${cwdEnv}PROD=1 PORT=${RemotePort} node app.js & NODE_PID=$!`,
     `echo "$NODE_PID" > "${PID_FILE}"`,
     `trap 'kill $NODE_PID 2>/dev/null; rm -f "${PID_FILE}"' EXIT HUP INT TERM`,
     `wait $NODE_PID`,
@@ -264,6 +346,16 @@ async function startSshTunnel() {
 
 async function startServer() {
   if (MODE === "url") return; // legacy REMOTE_URL: do nothing
+
+  // Resolve workspace (folder picker for local mode, config for remote).
+  const chosen = await chooseWorkspace();
+  if (chosen) {
+    process.env.CLAUDE_CWD = chosen;
+    log(`[workspace] CLAUDE_CWD set to: ${chosen}`);
+  } else {
+    log(`[workspace] using default workspace (no override)`);
+  }
+
   if (MODE === "remote") {
     try {
       EffectiveLocalPort = await resolveLocalPort();

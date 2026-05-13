@@ -1,4 +1,4 @@
-# Claude Multi-Agent Console &nbsp;·&nbsp; v0.1.8
+# Claude Multi-Agent Console &nbsp;·&nbsp; v0.2.0
 
 내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
@@ -57,11 +57,14 @@ claude auth status
 `config.json`:
 ```json
 {
-  "mode": "local"
+  "mode": "local",
+  "askWorkspaceOnLaunch": true
 }
 ```
 
-`.exe` 더블클릭 → 끝. 첫 실행 시 본인 Claude Code 로그인 상태 자동 확인.
+`.exe` 더블클릭 → **워크스페이스 폴더 선택 다이얼로그**가 뜸 → 폴더 선택 → Electron 창에서 그 폴더를 대상으로 작업.
+
+다음 실행부터는 다이얼로그가 마지막 선택을 미리 채워줘서 그냥 "Use this folder" 버튼만 누르면 됨. 매번 묻는 게 귀찮으면 `"askWorkspaceOnLaunch": false`로 바꿔두면 됩니다 (저장된 마지막 폴더 그대로 사용).
 
 ### Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (원격 서버를 데스크탑 창에서)
 
@@ -69,7 +72,7 @@ claude auth status
 
 ```
 [로컬 Windows]                                  [원격 Linux 서버]
-  ClaudeMultiAgentConsole-0.1.8.exe             ~/Claude_Multi_Agent_Console/
+  ClaudeMultiAgentConsole-0.2.0.exe             ~/Claude_Multi_Agent_Console/
   + config.json   ──SSH 터널──▶  ./start.sh    ──┐
        │                                          │ Claude CLI 호출
        │                                          ▼
@@ -138,7 +141,7 @@ Host myserver
 
 **C. .exe 다운로드 & 폴더 셋업**
 
-1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.1.8.exe` 다운로드
+1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.2.0.exe` 다운로드
 2. 본인이 원하는 위치에 폴더 만듬 (예: `C:\Apps\AgentConsole\`)
 3. 다운받은 `.exe`를 그 폴더에 넣기
 4. **같은 폴더에** `config.json` 파일을 만들어 아래 내용 저장:
@@ -159,7 +162,7 @@ Host myserver
 
 ```
 C:\Apps\AgentConsole\
-├── ClaudeMultiAgentConsole-0.1.8.exe
+├── ClaudeMultiAgentConsole-0.2.0.exe
 └── config.json
 ```
 
@@ -169,6 +172,7 @@ C:\Apps\AgentConsole\
 |---|---|---|
 | `ssh` | 서버 호칭 — `~/.ssh/config`의 별칭 또는 `user@host` | `"myserver"` 또는 `"myname@1.2.3.4"` |
 | `path` | 서버에서 클론한 레포 경로 — 홈 기준 상대경로 또는 절대경로 | `"Claude_Multi_Agent_Console"` (홈 기준) 또는 `"/home/myname/projects/Claude_Multi_Agent_Console"` |
+| `workspace` | (선택) 원격 서버에서 워커가 작업할 디렉토리 (CLAUDE_CWD) | `"/home/myname/projects/api"` — 비우면 `path/workspace/` 기본값 |
 | `localPort` | 로컬에서 쓸 포트 (이미 점유 중이면 변경) | `8787` |
 | `remotePort` | 서버에서 띄울 포트 | `8787` |
 
@@ -201,7 +205,7 @@ C:\Apps\AgentConsole\
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
 npm install
-npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.1.8.exe
+npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.2.0.exe
 ```
 
 Linux: `npm run dist:linux` → `.AppImage`. Mac: `npm run dist:mac` → `.dmg` (Mac 머신 필요).
