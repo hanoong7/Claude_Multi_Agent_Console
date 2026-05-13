@@ -433,6 +433,7 @@ function serverUrl() {
 let sshChild = null;
 
 let sshOutBuf = "";
+let serverListeningSignal = false; // flips true when remote prints "[server] listening"
 
 async function startSshTunnel() {
   if (!RemoteSsh) {
@@ -490,6 +491,7 @@ async function startSshTunnel() {
   ].join("; ");
 
   sshOutBuf = "";
+  serverListeningSignal = false;
   sshChild = spawn(
     "ssh",
     [
@@ -509,7 +511,16 @@ async function startSshTunnel() {
   sshChild.stdout.on("data", (d) => {
     const s = d.toString();
     sshOutBuf += s;
-    for (const line of s.split("\n").filter(Boolean)) log(`[ssh stdout] ${line}`);
+    for (const line of s.split("\n").filter(Boolean)) {
+      log(`[ssh stdout] ${line}`);
+      // Definitive "new server is up" signal — trust this, not /health, because
+      // a stale node from a previous run may still answer /health until our
+      // remote pidfile cleanup kills it mid-stream.
+      if (line.includes("[server] listening")) {
+        if (!serverListeningSignal) log(`[ssh] new server bound (stdout marker)`);
+        serverListeningSignal = true;
+      }
+    }
   });
   sshChild.stderr.on("data", (d) => {
     const s = d.toString();
@@ -569,20 +580,39 @@ async function startServer() {
 }
 
 async function waitForServer(timeoutMs = 30000) {
-  log(`[health] polling ${serverUrl()}/health for up to ${timeoutMs}ms`);
   const start = Date.now();
+
+  // For remote mode, wait for the remote command's "[server] listening"
+  // line on stdout BEFORE trusting /health. /health can transiently answer
+  // from a zombie node that our cleanup is about to kill, which leaves us
+  // racing the server going down between /health and loadURL.
+  if (MODE === "remote") {
+    log(`[health] waiting for new-server stdout marker (max ${timeoutMs}ms)`);
+    while (!serverListeningSignal && Date.now() - start < timeoutMs) {
+      if (sshChild === null) {
+        log(`[health] aborting — SSH exited before marker`);
+        return false;
+      }
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    if (!serverListeningSignal) {
+      log(`[health] timeout waiting for stdout marker`);
+      return false;
+    }
+    log(`[health] marker seen at ${Date.now() - start}ms; grace 400ms`);
+    await new Promise((r) => setTimeout(r, 400)); // let socket finish binding
+  }
+
+  log(`[health] polling ${serverUrl()}/health`);
   let attempts = 0;
   let lastErr = null;
   while (Date.now() - start < timeoutMs) {
-    // detect SSH exit early — no point waiting if SSH died
     if (MODE === "remote" && sshChild === null) {
-      log(`[health] aborting — SSH exited before server became ready`);
+      log(`[health] aborting — SSH exited`);
       return false;
     }
     attempts++;
     try {
-      // Per-attempt timeout: fetch has no built-in timeout, and a hung
-      // socket would otherwise block the whole 30s window in a single call.
       const res = await fetch(serverUrl() + "/health", {
         signal: AbortSignal.timeout(1500),
       });
@@ -679,7 +709,22 @@ async function createWindow() {
       nodeIntegration: false,
     },
   });
-  await win.loadURL(serverUrl());
+  // Retry loadURL — first attempt can hit a transient ERR_CONNECTION_RESET
+  // if the SSH tunnel is still settling after the remote node just bound.
+  let lastErr = null;
+  for (let i = 1; i <= 4; i++) {
+    try {
+      await win.loadURL(serverUrl());
+      log(`[loadURL] OK on attempt ${i}`);
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      log(`[loadURL] attempt ${i} failed: ${e && e.message}`);
+      if (i < 4) await new Promise((r) => setTimeout(r, 500 * i));
+    }
+  }
+  if (lastErr) throw lastErr;
 }
 
 // Run startServer + createWindow only after app is ready.
