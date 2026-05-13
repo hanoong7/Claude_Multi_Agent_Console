@@ -683,25 +683,34 @@ async function createWindow() {
 }
 
 // Run startServer + createWindow only after app is ready.
-// (Previous structure had 'await startServer()' at top level, which deadlocked
-// when startServer awaited app.whenReady() internally — Electron with ESM
-// entry waits for top-level await to finish before firing 'ready'.)
+// Bootstrap is guarded by `bootstrapDone` so that the brief gap between
+// "workspace prompt closes" and "main window opens" doesn't trigger the
+// window-all-closed → quit handler (which would also kill SSH).
+let bootstrapDone = false;
+
 app.whenReady().then(async () => {
   try {
     buildMenu();
     await startServer();
     await createWindow();
+    bootstrapDone = true;
+    log(`[bootstrap] done`);
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   } catch (e) {
     log(`[bootstrap] failed: ${e && (e.stack || e.message)}`);
+    bootstrapDone = true; // allow normal quit path
     dialog.showErrorBox("Startup error", String(e && (e.stack || e.message) || e));
     app.quit();
   }
 });
 
 app.on("window-all-closed", () => {
+  if (!bootstrapDone) {
+    log(`[event] window-all-closed during bootstrap — ignoring`);
+    return;
+  }
   if (sshChild && !sshChild.killed) {
     try {
       sshChild.kill("SIGTERM");
