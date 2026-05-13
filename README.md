@@ -65,7 +65,84 @@ claude auth status
 
 ### Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (원격 서버를 데스크탑 창에서)
 
-`config.json`:
+이 패턴이 동작하는 그림:
+
+```
+[로컬 Windows]                                  [원격 Linux 서버]
+  ClaudeMultiAgentConsole-0.1.0.exe             ~/Claude_Multi_Agent_Console/
+  + config.json   ──SSH 터널──▶  ./start.sh    ──┐
+       │                                          │ Claude CLI 호출
+       │                                          ▼
+       └─ Electron 창 ◀────── HTTP/WebSocket ─── claude.ai
+                                       (8787)
+```
+
+로컬에는 **.exe + config.json만** 있으면 됩니다. Claude CLI · Node.js · 워크스페이스 다 원격에서 돌아갑니다.
+
+---
+
+#### 사전 준비 — 원격 Linux 서버 (한 번만)
+
+서버에 SSH로 접속해서:
+
+```bash
+# 1. Node.js 20+ 확인
+node --version
+
+# 2. Claude Code CLI 설치 (없으면)
+#    https://claude.com/code 참고
+
+# 3. 로그인 (서버에서!) — 브라우저 OAuth 한 번
+claude
+
+# 4. 레포 클론 — 홈 디렉토리에 두는 게 가장 단순
+cd ~
+git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
+```
+
+이러면 서버에 `/home/<유저이름>/Claude_Multi_Agent_Console/` 가 생깁니다. **이 경로 기억해두세요** — config.json의 `path` 필드에 들어갑니다.
+
+> 다른 경로에 두고 싶으면 그래도 됩니다. config.json의 `path`에 그 경로를 적으면 됨 (홈 기준 상대경로 또는 `/`로 시작하는 절대경로 둘 다 가능).
+
+서버는 직접 띄울 필요 없어요. 로컬에서 .exe 실행할 때 SSH로 자동 시작됩니다.
+
+---
+
+#### 사전 준비 — 로컬 Windows (한 번만)
+
+**A. SSH 키 인증 셋업** (이미 돼있으면 건너뛰기)
+
+PowerShell에서:
+
+```powershell
+# 키가 없으면 생성 (Enter만 쭉 눌러도 됨)
+ssh-keygen -t ed25519
+
+# 공개키를 서버에 등록 (서버 비밀번호 한 번 입력)
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh -p <SSH포트> <user>@<서버주소> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+
+# 확인 — 비밀번호 안 묻고 바로 들어가야 정상
+ssh -p <SSH포트> <user>@<서버주소>
+```
+
+**B. SSH config 별칭 등록** (`C:\Users\<당신>\.ssh\config` 파일에 추가, 없으면 만들기)
+
+```
+Host myserver
+    HostName 1.2.3.4         # 또는 example.com
+    Port 22                  # 비표준이면 변경
+    User myname              # 서버 로그인 유저명
+```
+
+저장 후 `ssh myserver`만 쳤을 때 바로 들어가면 OK. 비밀번호 물으면 A단계가 안 된 거예요.
+
+**C. .exe 다운로드 & 폴더 셋업**
+
+1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.1.0.exe` 다운로드
+2. 본인이 원하는 위치에 폴더 만듬 (예: `C:\Apps\AgentConsole\`)
+3. 다운받은 `.exe`를 그 폴더에 넣기
+4. **같은 폴더에** `config.json` 파일을 만들어 아래 내용 저장:
+
 ```json
 {
   "mode": "remote",
@@ -78,24 +155,41 @@ claude auth status
 }
 ```
 
-`ssh` 필드는 SSH 별칭 (예: `myserver`) 또는 `user@host` 형식. **SSH 키 인증이 셋업돼 있어야** 합니다 (비밀번호 안 물어보는 상태).
+폴더가 최종적으로 이런 모양:
 
-`~/.ssh/config` 예시 — `myserver` 별칭 정의:
 ```
-Host myserver
-    HostName <서버주소>
-    Port <SSH포트>
-    User <user>
+C:\Apps\AgentConsole\
+├── ClaudeMultiAgentConsole-0.1.0.exe
+└── config.json
 ```
 
-원격 서버에는 한 번 클론만 해두면 됨:
-```bash
-git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
-```
+**`config.json` 필드 설명**:
 
-(서버 직접 띄울 필요 없음 — `.exe`가 SSH로 자동 실행)
+| 필드 | 의미 | 예시 |
+|---|---|---|
+| `ssh` | 서버 호칭 — `~/.ssh/config`의 별칭 또는 `user@host` | `"myserver"` 또는 `"myname@1.2.3.4"` |
+| `path` | 서버에서 클론한 레포 경로 — 홈 기준 상대경로 또는 절대경로 | `"Claude_Multi_Agent_Console"` (홈 기준) 또는 `"/home/myname/projects/Claude_Multi_Agent_Console"` |
+| `localPort` | 로컬에서 쓸 포트 (이미 점유 중이면 변경) | `8787` |
+| `remotePort` | 서버에서 띄울 포트 | `8787` |
 
-`.exe` 더블클릭 → SSH 터널 자동 연결 → 원격 서버 자동 시작 → Electron 창 자동 표시 → 창 닫으면 모두 자동 정리.
+---
+
+#### 실행 — 매번
+
+`.exe` 더블클릭만.
+
+내부적으로:
+1. config.json 읽음
+2. SSH 터널 자동 열기 (`ssh myserver -L 8787:localhost:8787`)
+3. 서버 디렉토리에서 `./start.sh` 자동 실행
+4. /health 응답 확인 (최대 30초)
+5. Electron 창 표시
+6. 창 닫으면 SSH 터널 + 원격 서버 같이 정리
+
+**잘 안 되면** 빨간 에러 다이얼로그가 떠요. 자주 보이는 원인:
+- "SSH connection... didn't yield a healthy server" → 위 사전 준비 A/B 다시 확인 (PowerShell에서 `ssh myserver` 했을 때 비번 없이 들어가는지)
+- 서버에 Node.js 없음 → 서버에 `node --version` 안 되면 Node 20+ 설치
+- 서버에 Claude CLI 로그인 안 됨 → 서버에서 `claude auth status` 했을 때 `loggedIn: true` 여야 함
 
 ---
 
