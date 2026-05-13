@@ -1,6 +1,10 @@
-// Electron entry point. Starts the bundled/source server in-process,
-// waits for /health to respond, then opens a BrowserWindow on the
-// server URL.
+// Electron entry point.
+// Two modes:
+//   1. Local mode (default): starts the bundled server in-process, then
+//      opens a BrowserWindow on http://localhost:PORT.
+//   2. Remote mode: set REMOTE_URL to skip starting a local server and
+//      just open a window pointing at that URL (handy when the server runs
+//      on another machine and you've SSH-tunneled its port to localhost).
 import { app, BrowserWindow, Menu, shell } from "electron";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,30 +12,31 @@ import { existsSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const REMOTE_URL = process.env.REMOTE_URL || null;
+
 // In dev (this source tree), the UI build output sits at env/dist after `npm run build`.
 // In release/, the bundled app.js sits alongside a `public/` dir which is used directly.
 // We detect which we are and configure env vars before importing the server.
 const DEV_DIST = join(__dirname, "dist");
 const DEV_SERVER_DATA = join(__dirname, "server");
 
-if (existsSync(DEV_DIST)) {
-  // dev tree (env/)
-  process.env.STATIC_DIR = DEV_DIST;
-  process.env.DATA_DIR = DEV_SERVER_DATA;
-  process.env.CLAUDE_CWD = process.env.CLAUDE_CWD || resolve(__dirname, "..");
-} else {
+if (!REMOTE_URL) {
+  if (existsSync(DEV_DIST)) {
+    // dev tree (env/)
+    process.env.STATIC_DIR = DEV_DIST;
+    process.env.DATA_DIR = DEV_SERVER_DATA;
+    process.env.CLAUDE_CWD = process.env.CLAUDE_CWD || resolve(__dirname, "..");
+  }
   // release tree (release/) — server defaults already point to ./public, ./data, ./workspace
+  process.env.PROD = "1";
+  process.env.PORT = process.env.PORT || "8787";
 }
 
-process.env.PROD = "1";
-process.env.PORT = process.env.PORT || "8787";
-const SERVER_URL = `http://localhost:${process.env.PORT}`;
+const SERVER_URL = REMOTE_URL || `http://localhost:${process.env.PORT || 8787}`;
 
-// Start the server. server.mjs runs at top level — importing it kicks off http.listen.
 async function startServer() {
+  if (REMOTE_URL) return; // remote mode — nothing to start
   try {
-    // In dev: import from ./server/server.mjs
-    // In release: server is the bundled app.js at the same location as this file (renamed)
     const devServer = join(__dirname, "server", "server.mjs");
     const relServer = join(__dirname, "app.js");
     if (existsSync(devServer)) {
@@ -47,15 +52,19 @@ async function startServer() {
   }
 }
 
-async function waitForServer(timeoutMs = 10000) {
+async function waitForServer(timeoutMs = 15000) {
   const start = Date.now();
+  let lastErr = null;
   while (Date.now() - start < timeoutMs) {
     try {
       const res = await fetch(SERVER_URL + "/health");
       if (res.ok) return true;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 100));
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((r) => setTimeout(r, 200));
   }
+  if (lastErr) console.error("[electron] last health-check error:", lastErr.message);
   return false;
 }
 

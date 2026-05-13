@@ -48,6 +48,31 @@ npm install
 
 ---
 
+## 실행 시나리오 — 어디서 뭐 돌릴지
+
+**A. 같은 머신에서 모두 돌리기 (일반)**
+
+본인 PC에서 서버 + GUI 모두 실행. `claude` CLI, Node, Electron(선택) 다 본인 PC에 설치.
+
+**B. 원격 서버 + 로컬 데스크탑 (개발자가 자주 쓰는 패턴)**
+
+- 서버는 SSH로 들어간 원격 머신에서 실행 (claude CLI도 거기 설치/로그인)
+- 본인 로컬 PC에서 SSH 터널만 열고 데스크탑 창 띄움
+
+```bash
+# 원격 서버에서
+./start.sh                            # 또는 npm run start:web
+
+# 로컬 PC 터미널에서
+ssh -L 8787:localhost:8787 user@server   # 터널 유지
+# 다른 로컬 터미널
+REMOTE_URL=http://localhost:8787 npm start
+```
+
+> ⚠ **Electron은 헤드리스 서버(Docker 등)에선 못 돌아요.** 디스플레이가 필요해요. 시나리오 B에선 서버는 `start.sh`(웹모드)만, Electron은 본인 PC에서만.
+
+---
+
 ## 처음 한 번만 설정
 
 **1. Claude Code 로그인** (아무 터미널에서 한 번만):
@@ -68,13 +93,21 @@ claude auth status
 
 **2. 콘솔 실행**:
 
-### 데스크탑 앱 (권장)
+### 데스크탑 앱 (권장, 로컬에서 실행)
 
 ```bash
 npm start
 ```
 
 Electron 창이 열리면서 바로 사용 가능. macOS / Linux / Windows 동일.
+
+원격 서버를 가리키는 데스크탑 창으로 띄우려면 (SSH 터널 사용 중일 때):
+
+```bash
+REMOTE_URL=http://localhost:8787 npm start
+```
+
+이 모드는 로컬 서버를 띄우지 않고 그 URL로만 창을 엽니다.
 
 ### 웹브라우저로만 쓰기 (Electron 없이)
 
@@ -190,6 +223,8 @@ release-folder/
 **채팅에 "claude exited (1)..."** — 권한 또는 인증 이슈. `claude auth status`로 로그인 확인. 도구 호출이 계속 실패하면 오케스트레이터 권한을 `bypassPermissions`로 변경.
 
 **워커가 워크플로 무시 / 위임 안 함** — 각 워커의 `description`이 트리거 키워드를 포함하는지 확인 ("Use this team for any code change..." 식). 그리고 팀에 `planner / coder / reviewer` 기본 kind들이 있어야 자동 워크플로가 동작합니다.
+
+**`libnspr4.so: cannot open shared object file`** — Electron을 헤드리스 환경(Docker 컨테이너, SSH-only 서버 등)에서 띄우려고 한 거예요. Electron은 디스플레이가 있는 본인 PC에서만 실행하세요. 서버 쪽에선 `./start.sh` (웹 모드)만.
 
 **포트 점유 충돌** — `PORT=...` 로 다른 포트 사용.
 
