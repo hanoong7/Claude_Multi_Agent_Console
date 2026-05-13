@@ -434,6 +434,7 @@ let sshChild = null;
 
 let sshOutBuf = "";
 let serverListeningSignal = false; // flips true when remote prints "[server] listening"
+let chosenWorkspace = ""; // set by startServer after chooseWorkspace; read by startSshTunnel
 
 async function startSshTunnel() {
   if (!RemoteSsh) {
@@ -456,10 +457,13 @@ async function startSshTunnel() {
   //     trap propagates SIGTERM to node so it dies cleanly. This is what
   //     fixed the zombie-node-after-disconnect problem.
   const PID_FILE = `$HOME/.claude-multi-agent-${RemotePort}.pid`;
-  const remoteWorkspace = cfg.data.remote?.workspace || "";
+  // Priority: user's pick from prompt > config.json remote.workspace > nothing
+  const remoteWorkspace =
+    chosenWorkspace || cfg.data.remote?.workspace || "";
   const cwdEnv = remoteWorkspace
     ? `CLAUDE_CWD='${remoteWorkspace.replace(/'/g, "'\\''")}' `
     : "";
+  log(`[ssh] remote workspace: ${remoteWorkspace || "(default)"}`);
   const remoteCmd = [
     `export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"`,
     `echo "[remote] pwd=$(pwd)"`,
@@ -537,10 +541,15 @@ async function startSshTunnel() {
 async function startServer() {
   if (MODE === "url") return; // legacy REMOTE_URL: do nothing
 
-  // Resolve workspace (folder picker for local mode, config for remote).
+  // Resolve workspace (text prompt). The picked value applies to BOTH modes:
+  //   - local: set process.env.CLAUDE_CWD before importing the server bundle
+  //   - remote: stashed in chosenWorkspace so startSshTunnel can inject it as
+  //     CLAUDE_CWD on the remote shell (NOT via local env, which SSH doesn't
+  //     transmit)
   const chosen = await chooseWorkspace();
   if (chosen) {
-    process.env.CLAUDE_CWD = chosen;
+    chosenWorkspace = chosen;
+    process.env.CLAUDE_CWD = chosen; // applies to local mode
     log(`[workspace] CLAUDE_CWD set to: ${chosen}`);
   } else {
     log(`[workspace] using default workspace (no override)`);
