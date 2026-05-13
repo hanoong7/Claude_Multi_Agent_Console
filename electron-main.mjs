@@ -11,12 +11,16 @@ import { existsSync, readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Where to look for config.json
-// - dev (env/): env/config.json
-// - unpackaged release: alongside electron-main.mjs
-// - packaged (.exe / .AppImage / .app): alongside the executable on disk
+// Where to look for config.json. Order matters — first match wins.
+// - portable .exe on Windows: PORTABLE_EXECUTABLE_DIR points to the
+//   folder the user launched from (NOT the temp extraction dir).
+// - other packaged builds: alongside the executable on disk.
+// - unpackaged dev: alongside electron-main.mjs / in resources.
 function loadConfig() {
   const candidates = [];
+  if (process.env.PORTABLE_EXECUTABLE_DIR) {
+    candidates.push(join(process.env.PORTABLE_EXECUTABLE_DIR, "config.json"));
+  }
   try {
     if (app.isPackaged) {
       candidates.push(join(dirname(app.getPath("exe")), "config.json"));
@@ -32,15 +36,25 @@ function loadConfig() {
       try {
         return { path: p, data: JSON.parse(readFileSync(p, "utf8")) };
       } catch (e) {
-        console.error(`[config] failed to parse ${p}:`, e.message);
+        return { path: p, error: `Could not parse ${p}:\n${e.message}` };
       }
     }
   }
-  return { path: null, data: {} };
+  return { path: null, data: {}, searched: candidates };
 }
 
 const cfg = loadConfig();
+if (cfg.error) {
+  app.whenReady().then(() => {
+    dialog.showErrorBox("Bad config.json", cfg.error);
+    app.quit();
+  });
+}
 console.log(`[config] ${cfg.path ?? "(no config.json found, using defaults)"}`);
+if (!cfg.path && cfg.searched) {
+  console.log("[config] looked in:");
+  for (const p of cfg.searched) console.log("  - " + p);
+}
 
 const MODE =
   process.env.REMOTE_URL ? "url" : (cfg.data.mode || "local");
@@ -64,8 +78,17 @@ if (MODE === "local") {
     process.env.STATIC_DIR = DEV_DIST;
     process.env.DATA_DIR = DEV_SERVER_DATA;
     process.env.CLAUDE_CWD = process.env.CLAUDE_CWD || resolve(__dirname, "..");
+  } else if (app.isPackaged) {
+    // Packaged build: app.js + public/ live inside asar (read-only).
+    // Put user data + workspace alongside the executable, not inside asar.
+    const writeRoot =
+      process.env.PORTABLE_EXECUTABLE_DIR || dirname(app.getPath("exe"));
+    process.env.DATA_DIR = process.env.DATA_DIR || join(writeRoot, "data");
+    process.env.CLAUDE_CWD =
+      process.env.CLAUDE_CWD || join(writeRoot, "workspace");
   }
-  // release tree (release/) — server defaults already point to ./public, ./data, ./workspace
+  // release tree (release/, not packaged) — server defaults already point
+  // to ./public, ./data, ./workspace next to electron-main.mjs.
   process.env.PROD = "1";
   process.env.PORT = process.env.PORT || String(LocalPort);
 }
@@ -132,6 +155,12 @@ async function startServer() {
     await import(pathToFileURL(target).href);
   } catch (e) {
     console.error("[electron] failed to start server:", e);
+    const detail = (e && (e.stack || e.message)) || String(e);
+    await app.whenReady();
+    dialog.showErrorBox(
+      "Server failed to start",
+      `Local mode could not start the bundled server.\n\n${detail}`
+    );
     app.quit();
   }
 }
@@ -205,7 +234,11 @@ function buildMenu() {
 async function createWindow() {
   const ready = await waitForServer();
   if (!ready) {
-    console.error("[electron] server did not become ready in time");
+    const detail =
+      MODE === "remote"
+        ? `SSH connection to "${RemoteSsh}" didn't yield a healthy server within 30s.\n\nCheck:\n  • SSH key auth works (try 'ssh ${RemoteSsh}' in a terminal)\n  • Remote repo is at '${RemotePath}'\n  • Port ${RemotePort} is free on the remote\n  • Local port ${LocalPort} is free here`
+        : `Local server did not respond on ${SERVER_URL} within 30s.\n\nThis usually means the server crashed at startup. Try running the .exe from a terminal to see error output.`;
+    dialog.showErrorBox("Server not responding", detail);
     app.quit();
     return;
   }
