@@ -7,9 +7,39 @@ import { app, BrowserWindow, Menu, shell, dialog } from "electron";
 import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ─── Diagnostic logging ──────────────────────────────────────────────────────
+// Packaged GUI apps have no visible stdout/stderr, so write a log file next to
+// the executable. Users can share this when something goes wrong.
+function getLogPath() {
+  const base =
+    process.env.PORTABLE_EXECUTABLE_DIR ||
+    (app.isPackaged ? dirname(app.getPath("exe")) : __dirname);
+  return join(base, "electron.log");
+}
+
+const startedAt = Date.now();
+function log(msg) {
+  const t = ((Date.now() - startedAt) / 1000).toFixed(2);
+  const line = `[+${t.padStart(7)}s] ${msg}\n`;
+  try {
+    process.stdout.write(line);
+  } catch {}
+  try {
+    appendFileSync(getLogPath(), line);
+  } catch {}
+}
+
+// Capture uncaught errors that would otherwise vanish silently
+process.on("uncaughtException", (err) => {
+  log(`UNCAUGHT: ${err && (err.stack || err.message || err)}`);
+});
+process.on("unhandledRejection", (err) => {
+  log(`UNHANDLED REJECTION: ${err && (err.stack || err.message || err)}`);
+});
 
 // Where to look for config.json. Order matters — first match wins.
 // - portable .exe on Windows: PORTABLE_EXECUTABLE_DIR points to the
@@ -43,18 +73,26 @@ function loadConfig() {
   return { path: null, data: {}, searched: candidates };
 }
 
+log("=== launch ===");
+log(`platform: ${process.platform}  arch: ${process.arch}`);
+log(`exe: ${process.execPath}`);
+log(`PORTABLE_EXECUTABLE_DIR: ${process.env.PORTABLE_EXECUTABLE_DIR || "(unset)"}`);
+
 const cfg = loadConfig();
 if (cfg.error) {
+  log(`[config] error: ${cfg.error}`);
   app.whenReady().then(() => {
     dialog.showErrorBox("Bad config.json", cfg.error);
     app.quit();
   });
 }
-console.log(`[config] ${cfg.path ?? "(no config.json found, using defaults)"}`);
+log(`[config] using: ${cfg.path ?? "(none — defaults)"}`);
 if (!cfg.path && cfg.searched) {
-  console.log("[config] looked in:");
-  for (const p of cfg.searched) console.log("  - " + p);
+  log("[config] searched (none of these existed):");
+  for (const p of cfg.searched) log("  - " + p);
 }
+log(`[config] mode: ${cfg.data.mode || "local"}`);
+if (cfg.data.remote) log(`[config] remote: ${JSON.stringify(cfg.data.remote)}`);
 
 const MODE =
   process.env.REMOTE_URL ? "url" : (cfg.data.mode || "local");
@@ -102,8 +140,11 @@ const SERVER_URL =
 
 let sshChild = null;
 
+let sshOutBuf = "";
+
 async function startSshTunnel() {
   if (!RemoteSsh) {
+    log("[ssh] no remote.ssh configured");
     dialog.showErrorBox(
       "Remote mode misconfigured",
       "config.json mode is 'remote' but remote.ssh is empty.\n\nEdit config.json next to the executable and set remote.ssh to your SSH alias or user@host."
@@ -111,31 +152,39 @@ async function startSshTunnel() {
     app.quit();
     return false;
   }
-  console.log(
-    `[ssh] connecting to ${RemoteSsh}, forwarding ${LocalPort}, starting remote server…`
-  );
-  // Inline the env + cleanup directly in the SSH command so behavior doesn't
-  // depend on whether the remote has an up-to-date start.sh.
-  //   - Add common per-user bin dirs to PATH (~/.local/bin holds the claude CLI
-  //     in most installs; non-interactive SSH skips .bashrc that usually does this).
-  //   - Kill any stale process on the port before launching node (TIME_WAIT
-  //     after a quick relaunch otherwise causes EADDRINUSE → silent crash).
-  // Three layers of port cleanup. Many minimal Linux containers ship
-  // without fuser AND lsof; pkill is a near-universal fallback (procps).
-  // 'exec' replaces the shell so SIGTERM/SIGHUP from sshd reaches node directly.
-  const remoteCmd =
-    `export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"; ` +
-    `cd '${RemotePath}' || exit 1; ` +
+  log(`[ssh] target=${RemoteSsh} forward=${LocalPort}→${RemotePort} path=${RemotePath}`);
+
+  // The remote command does everything inline so it doesn't depend on the
+  // server-side checkout being up-to-date. Echo markers let us see in the log
+  // exactly how far we got if it fails.
+  //   - PATH: include ~/.local/bin etc. so non-interactive SSH finds claude
+  //   - cleanup: kill any old node holding the port (fuser → lsof → pkill)
+  //   - exec node: replace shell so SIGTERM/SIGHUP can reach node directly
+  const remoteCmd = [
+    `export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"`,
+    `echo "[remote] pwd=$(pwd)"`,
+    `cd '${RemotePath}' || { echo "[remote] cd failed: ${RemotePath}"; exit 11; }`,
+    `echo "[remote] cwd-ok=$(pwd)"`,
+    `command -v node >/dev/null 2>&1 || { echo "[remote] node missing in PATH=$PATH"; exit 12; }`,
+    `echo "[remote] node=$(node --version 2>&1)"`,
+    `[ -f app.js ] || { echo "[remote] app.js missing in $(pwd)"; exit 13; }`,
     `if command -v fuser >/dev/null 2>&1; then ` +
-    `  fuser -k ${RemotePort}/tcp >/dev/null 2>&1 || true; ` +
-    `elif command -v lsof >/dev/null 2>&1; then ` +
-    `  P=$(lsof -ti tcp:${RemotePort} 2>/dev/null); ` +
-    `  [ -n "$P" ] && kill $P 2>/dev/null || true; ` +
-    `else ` +
-    `  pkill -f 'node app.js' >/dev/null 2>&1 || true; ` +
-    `fi; ` +
-    `sleep 0.5; ` +
-    `PROD=1 PORT=${RemotePort} exec node app.js`;
+      `fuser -k ${RemotePort}/tcp >/dev/null 2>&1 || true; ` +
+      `echo "[remote] cleanup=fuser"; ` +
+      `elif command -v lsof >/dev/null 2>&1; then ` +
+      `P=$(lsof -ti tcp:${RemotePort} 2>/dev/null); ` +
+      `[ -n "$P" ] && kill $P 2>/dev/null || true; ` +
+      `echo "[remote] cleanup=lsof"; ` +
+      `else ` +
+      `pkill -f 'node app.js' >/dev/null 2>&1 || true; ` +
+      `echo "[remote] cleanup=pkill"; ` +
+      `fi`,
+    `sleep 0.5`,
+    `echo "[remote] launching node"`,
+    `PROD=1 PORT=${RemotePort} exec node app.js`,
+  ].join("; ");
+
+  sshOutBuf = "";
   sshChild = spawn(
     "ssh",
     [
@@ -145,13 +194,25 @@ async function startSshTunnel() {
       "ExitOnForwardFailure=yes",
       "-o",
       "ServerAliveInterval=30",
+      "-o",
+      "ConnectTimeout=10",
       RemoteSsh,
       remoteCmd,
     ],
-    { stdio: "inherit" }
+    { stdio: ["ignore", "pipe", "pipe"] }
   );
-  sshChild.on("exit", (code) => {
-    console.log(`[ssh] exited (${code})`);
+  sshChild.stdout.on("data", (d) => {
+    const s = d.toString();
+    sshOutBuf += s;
+    for (const line of s.split("\n").filter(Boolean)) log(`[ssh stdout] ${line}`);
+  });
+  sshChild.stderr.on("data", (d) => {
+    const s = d.toString();
+    sshOutBuf += s;
+    for (const line of s.split("\n").filter(Boolean)) log(`[ssh stderr] ${line}`);
+  });
+  sshChild.on("exit", (code, signal) => {
+    log(`[ssh] exited code=${code} signal=${signal}`);
     sshChild = null;
   });
   return true;
@@ -176,30 +237,46 @@ async function startServer() {
     // pathToFileURL converts it into a proper file:// URL.
     await import(pathToFileURL(target).href);
   } catch (e) {
-    console.error("[electron] failed to start server:", e);
+    log(`[server] failed to import: ${e && (e.stack || e.message)}`);
     const detail = (e && (e.stack || e.message)) || String(e);
     await app.whenReady();
     dialog.showErrorBox(
       "Server failed to start",
-      `Local mode could not start the bundled server.\n\n${detail}`
+      `Local mode could not start the bundled server.\n\n${detail}\n\nFull log: ${getLogPath()}`
     );
     app.quit();
   }
 }
 
 async function waitForServer(timeoutMs = 30000) {
+  log(`[health] polling ${SERVER_URL}/health for up to ${timeoutMs}ms`);
   const start = Date.now();
+  let attempts = 0;
   let lastErr = null;
   while (Date.now() - start < timeoutMs) {
+    attempts++;
     try {
       const res = await fetch(SERVER_URL + "/health");
-      if (res.ok) return true;
+      if (res.ok) {
+        log(`[health] OK after ${attempts} attempts (${Date.now() - start}ms)`);
+        return true;
+      }
+      log(`[health] non-200 status=${res.status}`);
     } catch (e) {
       lastErr = e;
     }
+    // detect SSH exit early — no point waiting if SSH died
+    if (MODE === "remote" && sshChild === null) {
+      log(`[health] aborting — SSH exited before server became ready`);
+      return false;
+    }
     await new Promise((r) => setTimeout(r, 250));
   }
-  if (lastErr) console.error("[electron] last health-check error:", lastErr.message);
+  log(
+    `[health] timeout after ${attempts} attempts; last error: ${
+      lastErr ? lastErr.message : "(none)"
+    }`
+  );
   return false;
 }
 
@@ -256,10 +333,12 @@ function buildMenu() {
 async function createWindow() {
   const ready = await waitForServer();
   if (!ready) {
+    const sshTail = sshOutBuf.split("\n").slice(-20).join("\n").trim();
+    const logPath = getLogPath();
     const detail =
       MODE === "remote"
-        ? `SSH connection to "${RemoteSsh}" didn't yield a healthy server within 30s.\n\nCheck:\n  • SSH key auth works (try 'ssh ${RemoteSsh}' in a terminal)\n  • Remote repo is at '${RemotePath}'\n  • Port ${RemotePort} is free on the remote\n  • Local port ${LocalPort} is free here`
-        : `Local server did not respond on ${SERVER_URL} within 30s.\n\nThis usually means the server crashed at startup. Try running the .exe from a terminal to see error output.`;
+        ? `SSH connection to "${RemoteSsh}" didn't yield a healthy server within 30s.\n\nCheck:\n  • SSH key auth works (try 'ssh ${RemoteSsh}' in a terminal)\n  • Remote repo is at '${RemotePath}'\n  • Port ${RemotePort} is free on the remote\n  • Local port ${LocalPort} is free here\n\nLast SSH output:\n${sshTail || "(no output captured)"}\n\nFull log: ${logPath}`
+        : `Local server did not respond on ${SERVER_URL} within 30s.\n\nThis usually means the server crashed at startup.\n\nFull log: ${logPath}`;
     dialog.showErrorBox("Server not responding", detail);
     app.quit();
     return;
