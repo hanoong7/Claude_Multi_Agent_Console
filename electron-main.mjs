@@ -218,10 +218,11 @@ async function startSshTunnel() {
       `echo "[remote] cleanup=killed-pid-$OLD_PID"; ` +
       `else echo "[remote] cleanup=stale-pidfile"; fi; ` +
       `else echo "[remote] cleanup=none"; fi`,
-    // Start node in background, record PID, set trap so SSH disconnect kills it
+    // Start node in background, record PID, set trap so SSH disconnect kills it.
+    // Note: 'cmd &' cannot be followed by ';' (bash syntax error), so we
+    // collapse '... &' and '$!' capture into a single statement.
     `echo "[remote] launching node"`,
-    `PROD=1 PORT=${RemotePort} node app.js &`,
-    `NODE_PID=$!`,
+    `PROD=1 PORT=${RemotePort} node app.js & NODE_PID=$!`,
     `echo "$NODE_PID" > "${PID_FILE}"`,
     `trap 'kill $NODE_PID 2>/dev/null; rm -f "${PID_FILE}"' EXIT HUP INT TERM`,
     `wait $NODE_PID`,
