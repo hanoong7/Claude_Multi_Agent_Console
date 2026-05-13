@@ -11,9 +11,9 @@
     "start": "electron .",
     "start:web": "node app.js",
     "start:remote": "node start-remote.mjs",
-    "dist:win": "electron-builder --win portable",
-    "dist:linux": "electron-builder --linux AppImage",
-    "dist:mac": "electron-builder --mac dmg"
+    "dist:win": "electron-builder --win portable --publish=never",
+    "dist:linux": "electron-builder --linux AppImage --publish=never",
+    "dist:mac": "electron-builder --mac dmg --publish=never"
   },
   "engines": {
     "node": ">=20"
