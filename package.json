@@ -1,19 +1,65 @@
 {
   "name": "claude-multi-agent-console",
+  "productName": "Claude Multi-Agent Console",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "electron-main.mjs",
   "description": "A local web console that drives Claude Code as a multi-agent system.",
+  "author": "hanoong7",
   "scripts": {
     "start": "electron .",
     "start:web": "node app.js",
-    "start:remote": "node start-remote.mjs"
+    "start:remote": "node start-remote.mjs",
+    "dist:win": "electron-builder --win portable",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:mac": "electron-builder --mac dmg"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
-    "electron": "^41.0.0"
+    "electron": "^41.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.hanoong7.claude-multi-agent-console",
+    "productName": "Claude Multi-Agent Console",
+    "asar": true,
+    "files": [
+      "app.js",
+      "electron-main.mjs",
+      "start-remote.mjs",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "config.example.json",
+        "to": "config.example.json"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "ClaudeMultiAgentConsole-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "artifactName": "ClaudeMultiAgentConsole-${version}.${ext}",
+      "category": "Development"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "ClaudeMultiAgentConsole-${version}.${ext}"
+    },
+    "directories": {
+      "output": "dist-installers"
+    }
   }
 }

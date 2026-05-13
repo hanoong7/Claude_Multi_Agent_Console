@@ -1,18 +1,56 @@
 // Electron entry point.
-// Two modes:
-//   1. Local mode (default): starts the bundled server in-process, then
-//      opens a BrowserWindow on http://localhost:PORT.
-//   2. Remote mode: set REMOTE_URL to skip starting a local server and
-//      just open a window pointing at that URL (handy when the server runs
-//      on another machine and you've SSH-tunneled its port to localhost).
-import { app, BrowserWindow, Menu, shell } from "electron";
+// Three modes (resolved from config.json next to the executable, with env vars overriding):
+//   1. "local"  — start the bundled server in-process, open a window on it
+//   2. "remote" — spawn SSH tunnel + remote ./start.sh, open a window on the tunneled port
+//   3. legacy   — REMOTE_URL env var: skip server, just point at that URL
+import { app, BrowserWindow, Menu, shell, dialog } from "electron";
+import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Where to look for config.json
+// - dev (env/): env/config.json
+// - unpackaged release: alongside electron-main.mjs
+// - packaged (.exe / .AppImage / .app): alongside the executable on disk
+function loadConfig() {
+  const candidates = [];
+  try {
+    if (app.isPackaged) {
+      candidates.push(join(dirname(app.getPath("exe")), "config.json"));
+    }
+  } catch {}
+  candidates.push(join(__dirname, "config.json"));
+  if (process.resourcesPath) {
+    candidates.push(join(process.resourcesPath, "config.json"));
+    candidates.push(join(process.resourcesPath, "app", "config.json"));
+  }
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      try {
+        return { path: p, data: JSON.parse(readFileSync(p, "utf8")) };
+      } catch (e) {
+        console.error(`[config] failed to parse ${p}:`, e.message);
+      }
+    }
+  }
+  return { path: null, data: {} };
+}
+
+const cfg = loadConfig();
+console.log(`[config] ${cfg.path ?? "(no config.json found, using defaults)"}`);
+
+const MODE =
+  process.env.REMOTE_URL ? "url" : (cfg.data.mode || "local");
 const REMOTE_URL = process.env.REMOTE_URL || null;
+
+// Remote-mode config
+const RemoteSsh = cfg.data.remote?.ssh || process.env.REMOTE_SSH || null;
+const RemotePath = cfg.data.remote?.path || process.env.REMOTE_PATH || "Claude_Multi_Agent_Console";
+const LocalPort = Number(cfg.data.remote?.localPort || process.env.LOCAL_PORT || 8787);
+const RemotePort = Number(cfg.data.remote?.remotePort || process.env.REMOTE_PORT || 8787);
 
 // In dev (this source tree), the UI build output sits at env/dist after `npm run build`.
 // In release/, the bundled app.js sits alongside a `public/` dir which is used directly.
@@ -20,7 +58,7 @@ const REMOTE_URL = process.env.REMOTE_URL || null;
 const DEV_DIST = join(__dirname, "dist");
 const DEV_SERVER_DATA = join(__dirname, "server");
 
-if (!REMOTE_URL) {
+if (MODE === "local") {
   if (existsSync(DEV_DIST)) {
     // dev tree (env/)
     process.env.STATIC_DIR = DEV_DIST;
@@ -29,13 +67,58 @@ if (!REMOTE_URL) {
   }
   // release tree (release/) — server defaults already point to ./public, ./data, ./workspace
   process.env.PROD = "1";
-  process.env.PORT = process.env.PORT || "8787";
+  process.env.PORT = process.env.PORT || String(LocalPort);
 }
 
-const SERVER_URL = REMOTE_URL || `http://localhost:${process.env.PORT || 8787}`;
+const SERVER_URL =
+  MODE === "url"
+    ? REMOTE_URL
+    : MODE === "remote"
+      ? `http://localhost:${LocalPort}`
+      : `http://localhost:${process.env.PORT || LocalPort}`;
+
+let sshChild = null;
+
+async function startSshTunnel() {
+  if (!RemoteSsh) {
+    dialog.showErrorBox(
+      "Remote mode misconfigured",
+      "config.json mode is 'remote' but remote.ssh is empty.\n\nEdit config.json next to the executable and set remote.ssh to your SSH alias or user@host."
+    );
+    app.quit();
+    return false;
+  }
+  console.log(
+    `[ssh] connecting to ${RemoteSsh}, forwarding ${LocalPort}, starting remote server…`
+  );
+  sshChild = spawn(
+    "ssh",
+    [
+      "-L",
+      `${LocalPort}:localhost:${RemotePort}`,
+      "-o",
+      "ExitOnForwardFailure=yes",
+      "-o",
+      "ServerAliveInterval=30",
+      RemoteSsh,
+      `cd '${RemotePath}' && exec ./start.sh`,
+    ],
+    { stdio: "inherit" }
+  );
+  sshChild.on("exit", (code) => {
+    console.log(`[ssh] exited (${code})`);
+    sshChild = null;
+  });
+  return true;
+}
 
 async function startServer() {
-  if (REMOTE_URL) return; // remote mode — nothing to start
+  if (MODE === "url") return; // legacy REMOTE_URL: do nothing
+  if (MODE === "remote") {
+    const ok = await startSshTunnel();
+    return ok;
+  }
+  // local mode — import the bundled server
   try {
     const devServer = join(__dirname, "server", "server.mjs");
     const relServer = join(__dirname, "app.js");
@@ -53,7 +136,7 @@ async function startServer() {
   }
 }
 
-async function waitForServer(timeoutMs = 15000) {
+async function waitForServer(timeoutMs = 30000) {
   const start = Date.now();
   let lastErr = null;
   while (Date.now() - start < timeoutMs) {
@@ -63,7 +146,7 @@ async function waitForServer(timeoutMs = 15000) {
     } catch (e) {
       lastErr = e;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 250));
   }
   if (lastErr) console.error("[electron] last health-check error:", lastErr.message);
   return false;
@@ -152,5 +235,18 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  if (sshChild && !sshChild.killed) {
+    try {
+      sshChild.kill("SIGTERM");
+    } catch {}
+  }
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  if (sshChild && !sshChild.killed) {
+    try {
+      sshChild.kill("SIGTERM");
+    } catch {}
+  }
 });

@@ -46,44 +46,41 @@ claude auth status
 
 ---
 
-## Quick start 1. 로컬 Windows 단독 (Electron 데스크탑 앱)
+## 가장 쉬운 길 — `.exe` 받아서 더블클릭
 
-PowerShell 또는 cmd:
+[Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 페이지에서 최신 `.exe` 다운로드 → 어디든 폴더 만들어서 넣고 → 더블클릭.
 
-```powershell
-git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
-cd Claude_Multi_Agent_Console
-npm install
-npm start
+처음 한 번은 `.exe` 옆에 `config.json` 파일을 만들어서 모드 결정. **`config.example.json`을 복사해서 `config.json`으로 이름 변경** 후 편집하면 됩니다.
+
+### Quick start 1. 로컬 Windows 단독
+
+`config.json`:
+```json
+{
+  "mode": "local"
+}
 ```
 
-Electron 창이 열립니다. 끝.
+`.exe` 더블클릭 → 끝. 첫 실행 시 본인 Claude Code 로그인 상태 자동 확인.
 
----
+### Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (원격 서버를 데스크탑 창에서)
 
-## Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (Electron이 원격 서버 가리킴)
-
-서버에 Claude Code CLI를 깔고 로그인한 상태에서, 로컬 Windows의 데스크탑 창으로 사용하는 패턴. **명령 한 줄로 SSH 터널 + 원격 서버 시작 + Electron 창**까지 자동.
-
-### A. 원격 Linux 서버 (한 번만, 인터넷에 클론만)
-
-```bash
-git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
+`config.json`:
+```json
+{
+  "mode": "remote",
+  "remote": {
+    "ssh": "myserver",
+    "path": "Claude_Multi_Agent_Console",
+    "localPort": 8787,
+    "remotePort": 8787
+  }
+}
 ```
 
-> 서버를 직접 띄울 필요 없어요. 로컬에서 `npm run start:remote` 할 때 자동으로 띄워줍니다.
+`ssh` 필드는 SSH 별칭 (예: `myserver`) 또는 `user@host` 형식. **SSH 키 인증이 셋업돼 있어야** 합니다 (비밀번호 안 물어보는 상태).
 
-### B. 로컬 Windows (한 번만 셋업)
-
-```powershell
-git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
-cd Claude_Multi_Agent_Console
-npm install
-```
-
-**SSH 키 인증이 셋업돼 있어야 함** — `ssh <user>@<server>` 했을 때 비밀번호 안 물어보고 바로 들어가야 합니다 (자동화의 전제). 안 돼있으면 `ssh-keygen` + `ssh-copy-id` 한 번 해두세요.
-
-**`~/.ssh/config`에 호스트 별칭 추가** (필수는 아니지만 편함):
+`~/.ssh/config` 예시 — `myserver` 별칭 정의:
 ```
 Host myserver
     HostName <서버주소>
@@ -91,34 +88,36 @@ Host myserver
     User <user>
 ```
 
-### C. 사용할 때마다 — 명령 한 줄
-
-```powershell
-$env:REMOTE_SSH="myserver"; npm run start:remote
+원격 서버에는 한 번 클론만 해두면 됨:
+```bash
+git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 ```
 
-또는 SSH config 별칭 없이:
+(서버 직접 띄울 필요 없음 — `.exe`가 SSH로 자동 실행)
+
+`.exe` 더블클릭 → SSH 터널 자동 연결 → 원격 서버 자동 시작 → Electron 창 자동 표시 → 창 닫으면 모두 자동 정리.
+
+---
+
+## 직접 빌드하기 (개발자용)
+
+`.exe`를 직접 만들고 싶으면:
+
 ```powershell
-$env:REMOTE_SSH="user@server.example.com"; npm run start:remote
-# 비표준 SSH 포트면
-$env:REMOTE_SSH="-p 22022 user@server"; npm run start:remote   # ← 따옴표 안에 그대로
+git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
+cd Claude_Multi_Agent_Console
+npm install
+npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.1.0.exe
 ```
 
-이 명령이 자동으로:
-1. SSH 터널 열어서 8787 포트 포워딩
-2. 원격에서 `./start.sh` 실행
-3. /health 응답 확인 (최대 30초 대기)
-4. Electron 창 띄우면서 `REMOTE_URL` 자동 설정
-5. 창 닫으면 SSH 터널 + 원격 서버 같이 정리
+Linux: `npm run dist:linux` → `.AppImage`. Mac: `npm run dist:mac` → `.dmg` (Mac 머신 필요).
 
-### 환경변수 옵션
-
-| 변수 | 기본값 | 설명 |
-| --- | --- | --- |
-| `REMOTE_SSH` | (필수) | SSH 별칭 또는 `user@host` |
-| `REMOTE_PATH` | `Claude_Multi_Agent_Console` | 원격에 클론한 경로 |
-| `LOCAL_PORT` | `8787` | 로컬 포트 |
-| `REMOTE_PORT` | `8787` | 원격 서버 포트 |
+빌드 없이 그냥 소스로 실행하려면:
+```powershell
+npm install
+npm start                # 로컬 모드 (config.json 또는 기본)
+npm run start:remote     # 원격 모드 (config.json 또는 REMOTE_SSH 환경변수)
+```
 
 ---
 

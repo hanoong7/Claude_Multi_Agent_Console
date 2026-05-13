@@ -1,0 +1,11 @@
+{
+  "mode": "local",
+  "_comment_mode": "'local' = run server locally. 'remote' = SSH-tunnel to a remote server.",
+  "remote": {
+    "ssh": "myserver",
+    "_comment_ssh": "SSH alias (from ~/.ssh/config) or 'user@host'. Requires SSH key auth.",
+    "path": "Claude_Multi_Agent_Console",
+    "localPort": 8787,
+    "remotePort": 8787
+  }
+}

@@ -1,6 +1,8 @@
 data/
 workspace/
 node_modules/
+dist-installers/
+config.json
 *.log
 .DS_Store
 package-lock.json
