@@ -103,11 +103,22 @@ Electron 창이 열리면서 바로 사용 가능. macOS / Linux / Windows 동�
 
 원격 서버를 가리키는 데스크탑 창으로 띄우려면 (SSH 터널 사용 중일 때):
 
+**macOS / Linux / WSL**
 ```bash
 REMOTE_URL=http://localhost:8787 npm start
 ```
 
-이 모드는 로컬 서버를 띄우지 않고 그 URL로만 창을 엽니다.
+**Windows PowerShell**
+```powershell
+$env:REMOTE_URL="http://localhost:8787"; npm start
+```
+
+**Windows cmd.exe**
+```cmd
+set REMOTE_URL=http://localhost:8787 && npm start
+```
+
+이 모드는 로컬 서버를 띄우지 않고 그 URL로만 창을 엽니다. 별도 SSH 터널(`ssh -L 8787:localhost:8787 ...`)이 살아있어야 합니다.
 
 ### 웹브라우저로만 쓰기 (Electron 없이)
 
