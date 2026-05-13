@@ -7,7 +7,7 @@
 //      on another machine and you've SSH-tunneled its port to localhost).
 import { app, BrowserWindow, Menu, shell } from "electron";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -39,13 +39,14 @@ async function startServer() {
   try {
     const devServer = join(__dirname, "server", "server.mjs");
     const relServer = join(__dirname, "app.js");
-    if (existsSync(devServer)) {
-      await import(devServer);
-    } else if (existsSync(relServer)) {
-      await import(relServer);
-    } else {
-      throw new Error("server entry not found");
-    }
+    let target = null;
+    if (existsSync(devServer)) target = devServer;
+    else if (existsSync(relServer)) target = relServer;
+    else throw new Error("server entry not found");
+    // On Windows, dynamic import() of an absolute path fails with
+    // ERR_UNSUPPORTED_ESM_URL_SCHEME ("c:" is parsed as a protocol).
+    // pathToFileURL converts it into a proper file:// URL.
+    await import(pathToFileURL(target).href);
   } catch (e) {
     console.error("[electron] failed to start server:", e);
     app.quit();
