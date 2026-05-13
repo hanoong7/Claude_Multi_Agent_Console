@@ -63,21 +63,17 @@ Electron 창이 열립니다. 끝.
 
 ## Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (Electron이 원격 서버 가리킴)
 
-서버에 Claude Code CLI를 깔고 로그인한 상태에서, 로컬 Windows의 데스크탑 창으로 사용하는 패턴. SSH 터널로 포트만 가져옵니다.
+서버에 Claude Code CLI를 깔고 로그인한 상태에서, 로컬 Windows의 데스크탑 창으로 사용하는 패턴. **명령 한 줄로 SSH 터널 + 원격 서버 시작 + Electron 창**까지 자동.
 
-### A. 원격 Linux 서버에서 (한 번만)
+### A. 원격 Linux 서버 (한 번만, 인터넷에 클론만)
 
 ```bash
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
-cd Claude_Multi_Agent_Console
-
-# Electron 없이 서버만. npm install 안 해도 됨.
-./start.sh
 ```
 
-서버는 8787 포트에서 동작. 이 SSH 창은 계속 열어둠.
+> 서버를 직접 띄울 필요 없어요. 로컬에서 `npm run start:remote` 할 때 자동으로 띄워줍니다.
 
-### B. 로컬 Windows에서 (한 번만 셋업)
+### B. 로컬 Windows (한 번만 셋업)
 
 ```powershell
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
@@ -85,38 +81,44 @@ cd Claude_Multi_Agent_Console
 npm install
 ```
 
-### C. 사용할 때마다 — 터미널 두 개
+**SSH 키 인증이 셋업돼 있어야 함** — `ssh <user>@<server>` 했을 때 비밀번호 안 물어보고 바로 들어가야 합니다 (자동화의 전제). 안 돼있으면 `ssh-keygen` + `ssh-copy-id` 한 번 해두세요.
 
-**1번 PowerShell — SSH 터널 (8787 포워딩)**:
-
-```powershell
-ssh -p <서버포트> -L 8787:localhost:8787 <user>@<server>
-```
-
-이 창은 그대로 두기. SSH 안에서 서버가 안 떠 있으면 `./start.sh` 실행.
-
-**2번 PowerShell — Electron 데스크탑 창**:
-
-```powershell
-cd Claude_Multi_Agent_Console
-$env:REMOTE_URL="http://localhost:8787"; npm start
-```
-
-Electron 창이 뜨면서 SSH 터널을 통해 원격 서버의 UI를 띄움. 로컬 PC에는 Claude CLI 안 깔아도 됩니다 — 모든 Claude 호출은 원격 서버에서 일어남.
-
-### SSH config 단축 팁
-
-`C:\Users\<you>\.ssh\config` (없으면 만들기):
-
+**`~/.ssh/config`에 호스트 별칭 추가** (필수는 아니지만 편함):
 ```
 Host myserver
     HostName <서버주소>
-    Port <포트>
+    Port <SSH포트>
     User <user>
-    LocalForward 8787 localhost:8787
 ```
 
-이러면 SSH 터널은 그냥 `ssh myserver` 한 줄로 끝.
+### C. 사용할 때마다 — 명령 한 줄
+
+```powershell
+$env:REMOTE_SSH="myserver"; npm run start:remote
+```
+
+또는 SSH config 별칭 없이:
+```powershell
+$env:REMOTE_SSH="user@server.example.com"; npm run start:remote
+# 비표준 SSH 포트면
+$env:REMOTE_SSH="-p 22022 user@server"; npm run start:remote   # ← 따옴표 안에 그대로
+```
+
+이 명령이 자동으로:
+1. SSH 터널 열어서 8787 포트 포워딩
+2. 원격에서 `./start.sh` 실행
+3. /health 응답 확인 (최대 30초 대기)
+4. Electron 창 띄우면서 `REMOTE_URL` 자동 설정
+5. 창 닫으면 SSH 터널 + 원격 서버 같이 정리
+
+### 환경변수 옵션
+
+| 변수 | 기본값 | 설명 |
+| --- | --- | --- |
+| `REMOTE_SSH` | (필수) | SSH 별칭 또는 `user@host` |
+| `REMOTE_PATH` | `Claude_Multi_Agent_Console` | 원격에 클론한 경로 |
+| `LOCAL_PORT` | `8787` | 로컬 포트 |
+| `REMOTE_PORT` | `8787` | 원격 서버 포트 |
 
 ---
 
