@@ -3,3 +3,4 @@ workspace/
 node_modules/
 *.log
 .DS_Store
+package-lock.json

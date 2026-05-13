@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "electron-main.mjs",
   "description": "A local web console that drives Claude Code as a multi-agent system.",
   "scripts": {
-    "start": "node app.js"
+    "start": "electron .",
+    "start:web": "node app.js"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "^41.0.0"
   }
 }

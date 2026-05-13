@@ -39,9 +39,12 @@ macOS, Linux, Windows (10/11) 모두 지원.
 ```bash
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
+npm install
 ```
 
-끝. **npm 설치 단계 없음** — 서버는 이미 번들된 상태로 들어있습니다.
+`npm install`은 데스크탑 앱용 Electron만 설치합니다 (~200MB). 서버는 이미 번들됨.
+
+> 데스크탑 앱 안 쓰고 그냥 웹브라우저로 쓰려면 `npm install` 생략 가능 — 아래 "웹브라우저로만 쓰기" 참고.
 
 ---
 
@@ -65,19 +68,27 @@ claude auth status
 
 **2. 콘솔 실행**:
 
-### macOS / Linux
+### 데스크탑 앱 (권장)
+
+```bash
+npm start
+```
+
+Electron 창이 열리면서 바로 사용 가능. macOS / Linux / Windows 동일.
+
+### 웹브라우저로만 쓰기 (Electron 없이)
+
+`npm install` 안 했어도 됨. Node 20+만 있으면:
+
+**macOS / Linux**
 
 ```bash
 ./start.sh
 ```
 
-### Windows
+**Windows**
 
-`start.bat` 더블클릭, 또는 PowerShell / cmd:
-
-```cmd
-start.bat
-```
+`start.bat` 더블클릭, 또는 PowerShell / cmd에서 `start.bat`
 
 런처가 이런 출력을 보여줍니다:
 
@@ -156,6 +167,7 @@ start.bat
 ```
 release-folder/
 ├── app.js              ← 번들된 서버 (수정 불가)
+├── electron-main.mjs   ← 데스크탑 앱 진입점
 ├── public/             ← UI 에셋 (수정 불가)
 ├── examples/           ← 시드 데이터, 첫 실행 시 data/로 복사됨
 ├── data/               ← 본인 팀/워커/세션/설정 (자동 생성)
