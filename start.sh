@@ -20,4 +20,17 @@ if ! command -v claude >/dev/null 2>&1; then
   echo "(After install, run 'claude' once to log in.)"
 fi
 
-PROD=1 PORT=${PORT:-8787} node app.js
+# Clean up any leftover process holding the port from a previous run.
+# Without this, a quick relaunch can race with the OS releasing the socket
+# and the new node process dies with EADDRINUSE.
+PORT_TO_USE=${PORT:-8787}
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k ${PORT_TO_USE}/tcp >/dev/null 2>&1 || true
+elif command -v lsof >/dev/null 2>&1; then
+  PIDS=$(lsof -ti tcp:${PORT_TO_USE} 2>/dev/null || true)
+  [ -n "$PIDS" ] && kill $PIDS 2>/dev/null || true
+fi
+# tiny wait so the kernel releases the port
+sleep 0.5
+
+PROD=1 PORT=${PORT_TO_USE} exec node app.js
