@@ -120,12 +120,20 @@ async function startSshTunnel() {
   //     in most installs; non-interactive SSH skips .bashrc that usually does this).
   //   - Kill any stale process on the port before launching node (TIME_WAIT
   //     after a quick relaunch otherwise causes EADDRINUSE → silent crash).
+  // Three layers of port cleanup. Many minimal Linux containers ship
+  // without fuser AND lsof; pkill is a near-universal fallback (procps).
+  // 'exec' replaces the shell so SIGTERM/SIGHUP from sshd reaches node directly.
   const remoteCmd =
     `export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"; ` +
     `cd '${RemotePath}' || exit 1; ` +
-    `if command -v fuser >/dev/null 2>&1; then fuser -k ${RemotePort}/tcp >/dev/null 2>&1 || true; ` +
-    `elif command -v lsof >/dev/null 2>&1; then P=$(lsof -ti tcp:${RemotePort} 2>/dev/null); ` +
-    `[ -n "$P" ] && kill $P 2>/dev/null || true; fi; ` +
+    `if command -v fuser >/dev/null 2>&1; then ` +
+    `  fuser -k ${RemotePort}/tcp >/dev/null 2>&1 || true; ` +
+    `elif command -v lsof >/dev/null 2>&1; then ` +
+    `  P=$(lsof -ti tcp:${RemotePort} 2>/dev/null); ` +
+    `  [ -n "$P" ] && kill $P 2>/dev/null || true; ` +
+    `else ` +
+    `  pkill -f 'node app.js' >/dev/null 2>&1 || true; ` +
+    `fi; ` +
     `sleep 0.5; ` +
     `PROD=1 PORT=${RemotePort} exec node app.js`;
   sshChild = spawn(
