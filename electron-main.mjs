@@ -114,6 +114,20 @@ async function startSshTunnel() {
   console.log(
     `[ssh] connecting to ${RemoteSsh}, forwarding ${LocalPort}, starting remote server…`
   );
+  // Inline the env + cleanup directly in the SSH command so behavior doesn't
+  // depend on whether the remote has an up-to-date start.sh.
+  //   - Add common per-user bin dirs to PATH (~/.local/bin holds the claude CLI
+  //     in most installs; non-interactive SSH skips .bashrc that usually does this).
+  //   - Kill any stale process on the port before launching node (TIME_WAIT
+  //     after a quick relaunch otherwise causes EADDRINUSE → silent crash).
+  const remoteCmd =
+    `export PATH="$HOME/.local/bin:$HOME/.claude/bin:$HOME/bin:/usr/local/bin:$PATH"; ` +
+    `cd '${RemotePath}' || exit 1; ` +
+    `if command -v fuser >/dev/null 2>&1; then fuser -k ${RemotePort}/tcp >/dev/null 2>&1 || true; ` +
+    `elif command -v lsof >/dev/null 2>&1; then P=$(lsof -ti tcp:${RemotePort} 2>/dev/null); ` +
+    `[ -n "$P" ] && kill $P 2>/dev/null || true; fi; ` +
+    `sleep 0.5; ` +
+    `PROD=1 PORT=${RemotePort} exec node app.js`;
   sshChild = spawn(
     "ssh",
     [
@@ -124,7 +138,7 @@ async function startSshTunnel() {
       "-o",
       "ServerAliveInterval=30",
       RemoteSsh,
-      `cd '${RemotePath}' && exec ./start.sh`,
+      remoteCmd,
     ],
     { stdio: "inherit" }
   );
