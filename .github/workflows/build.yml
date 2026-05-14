@@ -35,8 +35,24 @@ jobs:
           name: linux-appimage
           path: dist-installers/*.AppImage
 
+  macos:
+    # macos-latest is Apple Silicon, so this produces an arm64 .dmg.
+    # Intel Macs are not supported (per project decision).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: npm run dist:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist-installers/*.dmg
+
   release:
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -50,3 +66,4 @@ jobs:
           files: |
             artifacts/windows-portable/*.exe
             artifacts/linux-appimage/*.AppImage
+            artifacts/macos-dmg/*.dmg

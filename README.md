@@ -1,4 +1,4 @@
-# Claude Multi-Agent Console &nbsp;·&nbsp; v0.4.0
+# Claude Multi-Agent Console &nbsp;·&nbsp; v0.5.0
 
 내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
@@ -46,11 +46,27 @@ claude auth status
 
 ---
 
-## 가장 쉬운 길 — `.exe` 받아서 더블클릭
+## 가장 쉬운 길 — 받아서 더블클릭
 
-[Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 페이지에서 최신 `.exe` 다운로드 → 어디든 폴더 만들어서 넣고 → 더블클릭.
+[Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 페이지에서 본인 OS에 맞는 파일 다운로드 → 어디든 폴더에 넣고 → 더블클릭.
 
-처음 한 번은 `.exe` 옆에 `config.json` 파일을 만들어서 모드 결정. **`config.example.json`을 복사해서 `config.json`으로 이름 변경** 후 편집하면 됩니다.
+| OS | 파일 |
+| --- | --- |
+| Windows | `ClaudeMultiAgentConsole-0.5.0.exe` |
+| macOS (Apple Silicon) | `ClaudeMultiAgentConsole-0.5.0.dmg` |
+| Linux | `ClaudeMultiAgentConsole-0.5.0.AppImage` |
+
+**처음 실행하면 설정 마법사가 뜹니다.** Local / Remote 모드를 드롭다운으로 선택하고 필요한 경로/포트만 입력하면 자동으로 `config.json`이 생성됩니다 — 손으로 만들 필요 없어요.
+
+### macOS 추가 안내
+
+코드 사이닝을 안 한 빌드라 Gatekeeper가 처음 실행을 막습니다. 다음 중 하나로 우회:
+
+- **권장**: Finder에서 `.app` 우클릭 → **Open** → 경고창에서 다시 **Open**. (이후로는 그냥 더블클릭 가능)
+- 또는 터미널에서: `xattr -cr /Applications/Claude\ Multi-Agent\ Console.app`
+- 또는: System Settings → Privacy & Security → "Open Anyway"
+
+Intel Mac(x64)은 현재 지원 안 합니다.
 
 ### Quick start 1. 로컬 Windows 단독
 
@@ -75,7 +91,7 @@ claude auth status
 
 ```
 [로컬 Windows]                                  [원격 Linux 서버]
-  ClaudeMultiAgentConsole-0.4.0.exe             ~/Claude_Multi_Agent_Console/
+  ClaudeMultiAgentConsole-0.5.0.exe             ~/Claude_Multi_Agent_Console/
   + config.json   ──SSH 터널──▶  ./start.sh    ──┐
        │                                          │ Claude CLI 호출
        │                                          ▼
@@ -144,7 +160,7 @@ Host myserver
 
 **C. .exe 다운로드 & 폴더 셋업**
 
-1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.4.0.exe` 다운로드
+1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.5.0.exe` 다운로드
 2. 본인이 원하는 위치에 폴더 만듬 (예: `C:\Apps\AgentConsole\`)
 3. 다운받은 `.exe`를 그 폴더에 넣기
 4. **같은 폴더에** `config.json` 파일을 만들어 아래 내용 저장:
@@ -165,7 +181,7 @@ Host myserver
 
 ```
 C:\Apps\AgentConsole\
-├── ClaudeMultiAgentConsole-0.4.0.exe
+├── ClaudeMultiAgentConsole-0.5.0.exe
 └── config.json
 ```
 
@@ -210,7 +226,7 @@ C:\Apps\AgentConsole\
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
 npm install
-npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.4.0.exe
+npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.5.0.exe
 ```
 
 Linux: `npm run dist:linux` → `.AppImage`. Mac: `npm run dist:mac` → `.dmg` (Mac 머신 필요).
