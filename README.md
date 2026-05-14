@@ -1,4 +1,4 @@
-# Claude Multi-Agent Console &nbsp;·&nbsp; v0.5.0
+# Claude Multi-Agent Console &nbsp;·&nbsp; v0.5.1
 
 내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
@@ -52,9 +52,9 @@ claude auth status
 
 | OS | 파일 |
 | --- | --- |
-| Windows | `ClaudeMultiAgentConsole-0.5.0.exe` |
-| macOS (Apple Silicon) | `ClaudeMultiAgentConsole-0.5.0.dmg` |
-| Linux | `ClaudeMultiAgentConsole-0.5.0.AppImage` |
+| Windows | `ClaudeMultiAgentConsole-0.5.1.exe` |
+| macOS (Apple Silicon) | `ClaudeMultiAgentConsole-0.5.1.dmg` |
+| Linux | `ClaudeMultiAgentConsole-0.5.1.AppImage` |
 
 **처음 실행하면 설정 마법사가 뜹니다.** Local / Remote 모드를 드롭다운으로 선택하고 필요한 경로/포트만 입력하면 자동으로 `config.json`이 생성됩니다 — 손으로 만들 필요 없어요.
 
@@ -68,38 +68,33 @@ claude auth status
 
 Intel Mac(x64)은 현재 지원 안 합니다.
 
-### Quick start 1. 로컬 Windows 단독
+### Quick start 1. 로컬 단독 실행
 
-`config.json`:
-```json
-{
-  "mode": "local",
-  "askWorkspaceOnLaunch": true
-}
-```
+`.exe` (또는 `.dmg` / `.AppImage`) 더블클릭만 하면 끝.
 
-`.exe` 더블클릭 → **워크스페이스 경로 입력창**이 뜸 → 작업할 폴더의 절대 경로 타이핑 → OK. 그 폴더가 작업 디렉토리가 됨.
+**첫 실행**: 설정 마법사가 뜸 → 모드 드롭다운에서 **Local** 선택 → 작업할 폴더의 절대 경로 입력 → Save & Continue. 같은 폴더에 `config.json`이 자동 생성됨.
+
+**다음 실행부터**: 마법사 안 뜨고 워크스페이스 입력창만 뜸. 마지막 선택이 미리 채워져 있어서 Enter만 눌러도 됨.
 
 - 경로가 존재하지 않거나 폴더가 아니면 에러 메시지 뜨고 다시 입력 요구
 - `~`로 시작하면 자동으로 홈 디렉토리 확장
-- 다음 실행부터 마지막 선택이 미리 채워짐 — 그냥 Enter 또는 OK만 누르면 됨
-- 매번 묻는 게 귀찮으면 `"askWorkspaceOnLaunch": false`로 (저장된 마지막 폴더 그대로 사용)
+- 매번 묻는 게 귀찮으면 자동 생성된 `config.json`에서 `"askWorkspaceOnLaunch": false`로 변경
 
-### Quick start 2. GUI 없는 Linux 서버 + 로컬 Windows (원격 서버를 데스크탑 창에서)
+### Quick start 2. GUI 없는 Linux 서버 + 로컬 데스크탑 (원격 서버를 데스크탑 창에서)
 
 이 패턴이 동작하는 그림:
 
 ```
-[로컬 Windows]                                  [원격 Linux 서버]
-  ClaudeMultiAgentConsole-0.5.0.exe             ~/Claude_Multi_Agent_Console/
-  + config.json   ──SSH 터널──▶  ./start.sh    ──┐
-       │                                          │ Claude CLI 호출
-       │                                          ▼
-       └─ Electron 창 ◀────── HTTP/WebSocket ─── claude.ai
+[로컬]                                          [원격 Linux 서버]
+  ClaudeMultiAgentConsole-0.5.1.exe             ~/Claude_Multi_Agent_Console/
+  (또는 .dmg / .AppImage)  ──SSH 터널──▶  node app.js ──┐
+       │                                                 │ Claude CLI 호출
+       │                                                 ▼
+       └─ Electron 창 ◀────── HTTP/WebSocket ────── claude.ai
                                        (8787)
 ```
 
-로컬에는 **.exe + config.json만** 있으면 됩니다. Claude CLI · Node.js · 워크스페이스 다 원격에서 돌아갑니다.
+로컬에는 **다운로드한 실행 파일 하나만** 있으면 됩니다. `config.json`은 첫 실행 시 마법사가 자동 생성. Claude CLI · Node.js · 워크스페이스 다 원격에서 돌아갑니다.
 
 ---
 
@@ -158,42 +153,29 @@ Host myserver
 
 저장 후 `ssh myserver`만 쳤을 때 바로 들어가면 OK. 비밀번호 물으면 A단계가 안 된 거예요.
 
-**C. .exe 다운로드 & 폴더 셋업**
+**C. 실행 파일 다운로드 & 첫 실행 설정**
 
-1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 `ClaudeMultiAgentConsole-0.5.0.exe` 다운로드
-2. 본인이 원하는 위치에 폴더 만듬 (예: `C:\Apps\AgentConsole\`)
-3. 다운받은 `.exe`를 그 폴더에 넣기
-4. **같은 폴더에** `config.json` 파일을 만들어 아래 내용 저장:
+1. [Releases](https://github.com/hanoong7/Claude_Multi_Agent_Console/releases) 가서 본인 OS 파일 다운로드 (`.exe` / `.dmg` / `.AppImage`)
+2. 원하는 위치에 폴더 만들기 (예: `C:\Apps\AgentConsole\`)
+3. 다운받은 실행 파일을 그 폴더에 넣고 더블클릭
+4. **설정 마법사**가 뜸 → Mode 드롭다운에서 **Remote** 선택 → 아래 정보 입력 → Save & Continue
 
-```json
-{
-  "mode": "remote",
-  "remote": {
-    "ssh": "myserver",
-    "path": "Claude_Multi_Agent_Console",
-    "localPort": 8787,
-    "remotePort": 8787
-  }
-}
-```
+| 마법사 필드 | 값 | 예시 |
+|---|---|---|
+| SSH host or alias | `~/.ssh/config`의 별칭 또는 `user@host` | `myserver` 또는 `myname@1.2.3.4` |
+| Remote install path | 서버에서 클론한 레포 경로 — 홈 기준 상대경로 또는 절대경로 | `Claude_Multi_Agent_Console` 또는 `/home/myname/projects/Claude_Multi_Agent_Console` |
+| Remote workspace path | 서버에서 워커가 작업할 디렉토리 (절대 경로) | `/home/myname/projects/api` |
+| Local port | 로컬에서 쓸 포트 | `8787` |
+| Remote port | 서버에서 띄울 포트 | `8787` |
 
-폴더가 최종적으로 이런 모양:
+Save & Continue 누르면 마법사가 SSH로 원격 워크스페이스 존재 여부를 검증한 뒤 같은 폴더에 `config.json`을 생성합니다. 폴더 최종 모양:
 
 ```
 C:\Apps\AgentConsole\
-├── ClaudeMultiAgentConsole-0.5.0.exe
-└── config.json
+├── ClaudeMultiAgentConsole-0.5.1.exe
+├── config.json     ← 자동 생성
+└── workspace.json  ← 자동 생성
 ```
-
-**`config.json` 필드 설명**:
-
-| 필드 | 의미 | 예시 |
-|---|---|---|
-| `ssh` | 서버 호칭 — `~/.ssh/config`의 별칭 또는 `user@host` | `"myserver"` 또는 `"myname@1.2.3.4"` |
-| `path` | 서버에서 클론한 레포 경로 — 홈 기준 상대경로 또는 절대경로 | `"Claude_Multi_Agent_Console"` (홈 기준) 또는 `"/home/myname/projects/Claude_Multi_Agent_Console"` |
-| `workspace` | (선택) 원격 서버에서 워커가 작업할 디렉토리 (CLAUDE_CWD) | `"/home/myname/projects/api"` — 비우면 `path/workspace/` 기본값 |
-| `localPort` | 로컬에서 쓸 포트 (이미 점유 중이면 변경) | `8787` |
-| `remotePort` | 서버에서 띄울 포트 | `8787` |
 
 ---
 
@@ -204,7 +186,7 @@ C:\Apps\AgentConsole\
 내부적으로:
 1. config.json 읽음
 2. SSH 터널 자동 열기 (`ssh myserver -L 8787:localhost:8787`)
-3. 서버 디렉토리에서 `./start.sh` 자동 실행
+3. 서버 디렉토리에서 `node app.js` 자동 실행 (PROD=1, PORT 환경변수 자동 설정)
 4. /health 응답 확인 (최대 30초)
 5. Electron 창 표시
 6. 창 닫으면 SSH 터널 + 원격 서버 같이 정리
@@ -226,17 +208,12 @@ C:\Apps\AgentConsole\
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
 npm install
-npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.5.0.exe
+npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.5.1.exe
 ```
 
-Linux: `npm run dist:linux` → `.AppImage`. Mac: `npm run dist:mac` → `.dmg` (Mac 머신 필요).
+Linux: `npm run dist:linux` → `.AppImage`. Mac (Apple Silicon): `npm run dist:mac` → `.dmg` (Mac 머신 필요).
 
-빌드 없이 그냥 소스로 실행하려면:
-```powershell
-npm install
-npm start                # 로컬 모드 (config.json 또는 기본)
-npm run start:remote     # 원격 모드 (config.json 또는 REMOTE_SSH 환경변수)
-```
+> v0.5.1부터 `start.sh` / `start.bat` / `npm start` 같은 수동 실행 경로는 더 이상 제공하지 않습니다. 배포는 `.exe` / `.dmg` / `.AppImage` 한 가지 경로로만 진행됩니다.
 
 ---
 
@@ -273,25 +250,13 @@ npm run start:remote     # 원격 모드 (config.json 또는 REMOTE_SSH 환경�
 
 ### 작업 디렉토리 (workspace)
 
-기본적으로 오케스트레이터와 워커들은 `app.js` 옆 `./workspace/` 안에서 작업합니다. 생성하는 파일이 여기 떨어집니다. 상단 정보 바에 현재 경로 표시 (📁 아이콘).
+매 실행마다 **워크스페이스 경로 입력창**이 떠요. 거기에 절대 경로를 적으면 그 폴더가 작업 디렉토리가 됩니다. 마지막 선택이 기억돼서 다음 실행 때 미리 채워짐. 상단 정보 바에 현재 경로 표시 (📁 아이콘).
 
-다른 디렉토리에서 작업하게 하려면 실행 전에 `CLAUDE_CWD` 환경변수 설정:
-
-**Windows PowerShell**
-
-```powershell
-$env:CLAUDE_CWD="C:\path\to\my\project"; npm start
-```
-
-**Linux**
-
-```bash
-CLAUDE_CWD=/path/to/my/project npm start
-```
+매번 묻는 게 귀찮으면 `.exe` 옆에 자동 생성된 `config.json`에서 `"askWorkspaceOnLaunch": false`로 변경 (저장된 마지막 폴더를 그대로 사용).
 
 ### 포트
 
-기본 `8787`. 바꾸려면 `PORT=...` 환경변수 설정.
+기본 `8787`. `config.json`의 `remote.localPort` / `remote.remotePort` 또는 처음 실행 시 마법사에서 변경 가능.
 
 ---
 
@@ -323,7 +288,7 @@ release-folder/
 
 **워커가 워크플로 무시 / 위임 안 함** — 각 워커의 `description`이 트리거 키워드를 포함하는지 확인. 그리고 팀에 `planner / coder / reviewer` 기본 kind들이 있어야 자동 워크플로가 동작.
 
-**포트 점유 충돌** — `PORT=...` 로 다른 포트 사용.
+**포트 점유 충돌** — `config.json`의 `remote.localPort` (또는 `remote.remotePort`)를 비어 있는 포트로 변경 후 재실행. 로컬 모드는 자동으로 빈 포트를 잡으므로 보통 문제 안 됨.
 
 **완전히 처음부터 다시** — 앱 끄고 `data/` (선택적으로 `workspace/`도) 삭제, 다시 실행.
 
