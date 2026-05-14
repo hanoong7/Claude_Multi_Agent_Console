@@ -80,7 +80,7 @@ log(`platform: ${process.platform}  arch: ${process.arch}`);
 log(`exe: ${process.execPath}`);
 log(`PORTABLE_EXECUTABLE_DIR: ${process.env.PORTABLE_EXECUTABLE_DIR || "(unset)"}`);
 
-const cfg = loadConfig();
+let cfg = loadConfig();
 if (cfg.error) {
   log(`[config] error: ${cfg.error}`);
   app.whenReady().then(() => {
@@ -237,6 +237,245 @@ inp.addEventListener('keydown', (e) => {
 });
 </script></body></html>`;
 
+// First-launch setup wizard. Asks the user which mode (local/remote) plus
+// the parameters needed for that mode, then writes config.json next to the
+// executable. Shown only when no config.json exists.
+const SETUP_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Setup</title>
+<style>
+  html, body { background: #0b0d10; color: #e6e8eb; font-family: -apple-system, "Segoe UI", sans-serif; padding: 0; margin: 0; }
+  body { padding: 20px 24px; }
+  h2 { font-size: 14px; margin: 0 0 4px; color: #fff; font-weight: 600; }
+  p.intro { font-size: 12px; color: rgba(230,232,235,0.6); margin: 0 0 14px; line-height: 1.4; }
+  label { display: block; font-size: 11px; color: rgba(230,232,235,0.7); margin: 10px 0 4px; font-weight: 500; }
+  input, select { width: 100%; padding: 8px 10px; background: #13171d; border: 1px solid rgba(255,255,255,0.12); color: white; border-radius: 6px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; box-sizing: border-box; }
+  input:focus, select:focus { outline: none; border-color: rgba(52,211,153,0.5); }
+  select { font-family: inherit; }
+  .hint { font-size: 10.5px; color: rgba(230,232,235,0.4); margin-top: 3px; line-height: 1.3; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .err { color: #f87171; font-size: 12px; margin-top: 12px; min-height: 14px; line-height: 1.4; word-break: break-all; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  button { padding: 8px 16px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.3); color: white; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: inherit; }
+  button.primary { background: rgba(52,211,153,0.2); border-color: rgba(52,211,153,0.4); color: #a7f3d0; }
+  button:hover { background: rgba(255,255,255,0.08); }
+  button.primary:hover { background: rgba(52,211,153,0.3); }
+  button:disabled { opacity: 0.5; cursor: wait; }
+</style></head><body>
+<h2>Initial setup</h2>
+<p class="intro">No config.json found. Tell us how you want to run Claude Multi-Agent Console.</p>
+
+<label for="mode">Mode</label>
+<select id="mode">
+  <option value="local">Local — run on this machine</option>
+  <option value="remote">Remote — connect to another machine via SSH</option>
+</select>
+
+<div id="localFields">
+  <label for="localWs">Workspace path</label>
+  <input id="localWs" type="text" placeholder="/home/you/projects/myapp" />
+  <div class="hint">Folder Claude will operate in. ~ expands to your home directory.</div>
+</div>
+
+<div id="remoteFields" style="display:none">
+  <label for="remoteSsh">SSH host or alias</label>
+  <input id="remoteSsh" type="text" placeholder="user@host  or  alias from ~/.ssh/config" />
+  <div class="hint">Key-based auth must be configured — no password prompts.</div>
+
+  <label for="remoteInstall">Remote install path</label>
+  <input id="remoteInstall" type="text" value="Claude_Multi_Agent_Console" />
+  <div class="hint">Where this app is cloned on the remote (relative to remote $HOME).</div>
+
+  <label for="remoteWs">Remote workspace path</label>
+  <input id="remoteWs" type="text" placeholder="/home/you/projects/myapp" />
+  <div class="hint">Absolute path on the remote where Claude will operate.</div>
+
+  <div class="row">
+    <div>
+      <label for="localPort">Local port</label>
+      <input id="localPort" type="number" min="1" max="65535" value="8787" />
+    </div>
+    <div>
+      <label for="remotePort">Remote port</label>
+      <input id="remotePort" type="number" min="1" max="65535" value="8787" />
+    </div>
+  </div>
+</div>
+
+<div class="err" id="err"></div>
+
+<div class="actions">
+  <button onclick="cancel()">Cancel</button>
+  <button class="primary" onclick="submit()">Save &amp; Continue</button>
+</div>
+
+<script>
+try {
+  var { ipcRenderer } = require('electron');
+} catch (e) {
+  document.body.innerHTML = '<div style="color:#f87171;padding:20px;font-family:monospace">' +
+    'Failed to load electron.ipcRenderer:<br>' + (e && e.message) + '</div>';
+  throw e;
+}
+const modeEl = document.getElementById('mode');
+const localFields = document.getElementById('localFields');
+const remoteFields = document.getElementById('remoteFields');
+const errEl = document.getElementById('err');
+const okBtn = document.querySelector('button.primary');
+let pending = false;
+
+function syncMode() {
+  const m = modeEl.value;
+  localFields.style.display = m === 'local' ? '' : 'none';
+  remoteFields.style.display = m === 'remote' ? '' : 'none';
+  setTimeout(() => {
+    (m === 'local' ? document.getElementById('localWs') : document.getElementById('remoteSsh')).focus();
+  }, 20);
+}
+modeEl.addEventListener('change', syncMode);
+
+function submit() {
+  if (pending) return;
+  pending = true;
+  errEl.textContent = '';
+  okBtn.disabled = true;
+  okBtn.textContent = 'Checking…';
+  const mode = modeEl.value;
+  const payload = { mode };
+  if (mode === 'local') {
+    payload.workspace = document.getElementById('localWs').value.trim();
+  } else {
+    payload.workspace = document.getElementById('remoteWs').value.trim();
+    payload.remote = {
+      ssh: document.getElementById('remoteSsh').value.trim(),
+      path: document.getElementById('remoteInstall').value.trim() || 'Claude_Multi_Agent_Console',
+      localPort: parseInt(document.getElementById('localPort').value, 10) || 8787,
+      remotePort: parseInt(document.getElementById('remotePort').value, 10) || 8787,
+    };
+  }
+  ipcRenderer.send('setup-submit', payload);
+}
+function cancel() {
+  ipcRenderer.send('setup-cancel');
+}
+
+ipcRenderer.on('error', (_, msg) => {
+  pending = false;
+  okBtn.disabled = false;
+  okBtn.textContent = 'Save & Continue';
+  errEl.textContent = msg;
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !pending) submit();
+  if (e.key === 'Escape') cancel();
+});
+
+setTimeout(() => document.getElementById('localWs').focus(), 50);
+</script></body></html>`;
+
+function promptForSetup() {
+  return new Promise(async (resolveP) => {
+    await app.whenReady();
+    log(`[setup] opening wizard`);
+    const win = new BrowserWindow({
+      width: 580,
+      height: 600,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      title: "Claude Multi-Agent Console — Setup",
+      backgroundColor: "#0b0d10",
+      center: true,
+      show: true,
+      webPreferences: {
+        sandbox: false,
+        contextIsolation: false,
+        nodeIntegration: true,
+      },
+    });
+    win.setMenu(null);
+    win.focus();
+    win.webContents.on("console-message", (_e, _level, msg) => {
+      log(`[setup console] ${msg}`);
+    });
+
+    let resolved = false;
+    const cleanup = () => {
+      ipcMain.removeListener("setup-submit", onSubmit);
+      ipcMain.removeListener("setup-cancel", onCancel);
+    };
+    const sendError = (msg) => {
+      log(`[setup] invalid: ${msg}`);
+      if (!win.isDestroyed()) win.webContents.send("error", msg);
+    };
+    const onSubmit = async (_e, payload) => {
+      log(`[setup] submit: ${JSON.stringify(payload)}`);
+      if (!payload || !payload.mode) return sendError("Mode is required.");
+      if (!payload.workspace) return sendError("Workspace path is required.");
+
+      if (payload.mode === "local") {
+        const err = validateLocalPath(payload.workspace);
+        if (err) return sendError(err);
+      } else if (payload.mode === "remote") {
+        const r = payload.remote || {};
+        if (!r.ssh) return sendError("SSH host or alias is required.");
+        const lp = Number(r.localPort);
+        const rp = Number(r.remotePort);
+        if (!Number.isFinite(lp) || lp < 1 || lp > 65535)
+          return sendError("Local port must be between 1 and 65535.");
+        if (!Number.isFinite(rp) || rp < 1 || rp > 65535)
+          return sendError("Remote port must be between 1 and 65535.");
+        const wsErr = await validateRemotePath(r.ssh, payload.workspace);
+        if (wsErr) return sendError(wsErr);
+      } else {
+        return sendError(`Unknown mode: ${payload.mode}`);
+      }
+
+      log(`[setup] valid, closing`);
+      resolved = true;
+      cleanup();
+      if (!win.isDestroyed()) win.close();
+      resolveP(payload);
+    };
+    const onCancel = () => {
+      log(`[setup] cancel`);
+      resolved = true;
+      cleanup();
+      if (!win.isDestroyed()) win.close();
+      resolveP(null);
+    };
+    ipcMain.on("setup-submit", onSubmit);
+    ipcMain.on("setup-cancel", onCancel);
+
+    win.on("closed", () => {
+      log(`[setup] window closed (resolved=${resolved})`);
+      if (!resolved) {
+        cleanup();
+        resolveP(null);
+      }
+    });
+
+    win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(SETUP_HTML));
+  });
+}
+
+function saveConfig(payload) {
+  const data = {
+    mode: payload.mode,
+    askWorkspaceOnLaunch: true,
+  };
+  if (payload.mode === "remote") {
+    data.remote = {
+      ssh: payload.remote.ssh,
+      path: payload.remote.path,
+      localPort: payload.remote.localPort,
+      remotePort: payload.remote.remotePort,
+    };
+  }
+  const path = join(getStateDir(), "config.json");
+  writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
+  log(`[setup] wrote ${path}`);
+}
+
 function promptForPath({ title, message, defaultValue, validate }) {
   return new Promise(async (resolveP) => {
     await app.whenReady();
@@ -310,10 +549,19 @@ function promptForPath({ title, message, defaultValue, validate }) {
   });
 }
 
+// Set true right after the setup wizard runs — workspace was just collected
+// there, so we don't immediately ask again with a separate prompt.
+let skipWorkspacePromptThisRun = false;
+
 async function chooseWorkspace() {
   const ask = cfg.data.askWorkspaceOnLaunch !== false; // default: true
   const saved = loadSavedWorkspace();
   const mode = cfg.data.mode || "local";
+
+  if (skipWorkspacePromptThisRun && saved) {
+    log(`[workspace] skipping prompt (just set in wizard); using: ${saved}`);
+    return saved;
+  }
 
   if (!ask && saved) {
     log(`[workspace] askWorkspaceOnLaunch=false, using saved: ${saved}`);
@@ -347,50 +595,52 @@ async function chooseWorkspace() {
   return expanded;
 }
 
-const MODE =
-  process.env.REMOTE_URL ? "url" : (cfg.data.mode || "local");
+// All cfg-derived state is mutable so it can be (re)computed AFTER the
+// first-launch setup wizard writes config.json. applyConfig() runs once
+// during bootstrap, after cfg is finalized.
+let MODE = "local";
 const REMOTE_URL = process.env.REMOTE_URL || null;
-
-// Remote-mode config
-const RemoteSsh = cfg.data.remote?.ssh || process.env.REMOTE_SSH || null;
-const RemotePath = cfg.data.remote?.path || process.env.REMOTE_PATH || "Claude_Multi_Agent_Console";
-const LocalPort = Number(cfg.data.remote?.localPort || process.env.LOCAL_PORT || 8787);
-const RemotePort = Number(cfg.data.remote?.remotePort || process.env.REMOTE_PORT || 8787);
+let RemoteSsh = null;
+let RemotePath = "Claude_Multi_Agent_Console";
+let LocalPort = 8787;
+let RemotePort = 8787;
+let EffectiveLocalPort = 8787;
 
 // In dev (this source tree), the UI build output sits at env/dist after `npm run build`.
 // In release/, the bundled app.js sits alongside a `public/` dir which is used directly.
-// We detect which we are and configure env vars before importing the server.
 const DEV_DIST = join(__dirname, "dist");
 const DEV_SERVER_DATA = join(__dirname, "server");
 
-if (MODE === "local") {
-  if (existsSync(DEV_DIST)) {
-    // dev tree (env/)
-    process.env.STATIC_DIR = DEV_DIST;
-    process.env.DATA_DIR = DEV_SERVER_DATA;
-    // CLAUDE_CWD will be set later from chooseWorkspace(); fall back here
-    // only when chooseWorkspace returns nothing.
-    process.env.CLAUDE_CWD =
-      process.env.CLAUDE_CWD || resolve(__dirname, "..");
-  } else if (app.isPackaged) {
-    // Packaged build: app.js + public/ live inside asar (read-only).
-    // Put user data + workspace alongside the executable, not inside asar.
-    const writeRoot =
-      process.env.PORTABLE_EXECUTABLE_DIR || dirname(app.getPath("exe"));
-    process.env.DATA_DIR = process.env.DATA_DIR || join(writeRoot, "data");
-    // CLAUDE_CWD intentionally NOT set here — chooseWorkspace() decides.
-  }
-  // release tree (release/, not packaged) — server defaults already point
-  // to ./public, ./data, ./workspace next to electron-main.mjs.
-  process.env.PROD = "1";
-  process.env.PORT = process.env.PORT || String(LocalPort);
-}
+function applyConfig() {
+  MODE = process.env.REMOTE_URL ? "url" : (cfg.data.mode || "local");
+  RemoteSsh = cfg.data.remote?.ssh || process.env.REMOTE_SSH || null;
+  RemotePath = cfg.data.remote?.path || process.env.REMOTE_PATH || "Claude_Multi_Agent_Console";
+  LocalPort = Number(cfg.data.remote?.localPort || process.env.LOCAL_PORT || 8787);
+  RemotePort = Number(cfg.data.remote?.remotePort || process.env.REMOTE_PORT || 8787);
+  EffectiveLocalPort = LocalPort;
 
-// In remote mode the configured LocalPort can fail to bind on Windows
-// (reserved range from Hyper-V/WSL2, or held by another app). We probe
-// for a free port at startup and substitute if needed. Mutable so other
-// code paths can re-read it.
-let EffectiveLocalPort = LocalPort;
+  if (MODE === "local") {
+    if (existsSync(DEV_DIST)) {
+      // dev tree (env/)
+      process.env.STATIC_DIR = DEV_DIST;
+      process.env.DATA_DIR = DEV_SERVER_DATA;
+      // CLAUDE_CWD will be set later from chooseWorkspace(); fall back here
+      // only when chooseWorkspace returns nothing.
+      process.env.CLAUDE_CWD =
+        process.env.CLAUDE_CWD || resolve(__dirname, "..");
+    } else if (app.isPackaged) {
+      // Packaged build: app.js + public/ live inside asar (read-only).
+      // Put user data + workspace alongside the executable, not inside asar.
+      const writeRoot =
+        process.env.PORTABLE_EXECUTABLE_DIR || dirname(app.getPath("exe"));
+      process.env.DATA_DIR = process.env.DATA_DIR || join(writeRoot, "data");
+      // CLAUDE_CWD intentionally NOT set here — chooseWorkspace() decides.
+    }
+    process.env.PROD = "1";
+    process.env.PORT = process.env.PORT || String(LocalPort);
+  }
+  log(`[config] applied — MODE=${MODE}${MODE === "remote" ? ` RemoteSsh=${RemoteSsh}` : ""}`);
+}
 
 function probeFreePort(port) {
   return new Promise((resolve) => {
@@ -745,6 +995,24 @@ let bootstrapDone = false;
 app.whenReady().then(async () => {
   try {
     buildMenu();
+
+    // First-launch setup: if we're a packaged build with no config.json yet,
+    // open a wizard to collect mode + parameters, then write config.json so
+    // subsequent launches go straight to the workspace prompt.
+    if (app.isPackaged && !cfg.path && !cfg.error) {
+      const result = await promptForSetup();
+      if (!result) {
+        log(`[setup] canceled — quitting`);
+        app.quit();
+        return;
+      }
+      saveConfig(result);
+      saveWorkspace(result.workspace);
+      cfg = loadConfig();
+      skipWorkspacePromptThisRun = true;
+    }
+
+    applyConfig();
     await startServer();
     await createWindow();
     bootstrapDone = true;
