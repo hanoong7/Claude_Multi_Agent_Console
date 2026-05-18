@@ -4,6 +4,12 @@
 
 전부 로컬에서 동작합니다. **본인** Claude Code OAuth 로그인을 그대로 씁니다 (사용량은 본인 Pro/Max 플랜에서 차감, **API 키 필요 없음**).
 
+## 시스템 구성도
+
+![architecture](docs/architecture.svg)
+
+데스크탑 앱 → WebSocket → 서버(Node.js) → 오케스트레이터(Claude Code CLI) → 워커 팀(planner/designer/coder/reviewer/researcher) → Anthropic API. 첫 실행 시 `coding-team`·`ui-team`·`research-team` 세 팀이 자동 시드됩니다.
+
 ---
 
 ## 주요 기능
