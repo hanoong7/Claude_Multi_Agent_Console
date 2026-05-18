@@ -1,7 +1,7 @@
 {
   "name": "claude-multi-agent-console",
   "productName": "Claude Multi-Agent Console",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "main": "electron-main.mjs",
@@ -27,11 +27,13 @@
     "productName": "Claude Multi-Agent Console",
     "asar": true,
     "asarUnpack": [
-      "node_modules/@lydell/**/*"
+      "node_modules/@lydell/**/*",
+      "permission-mcp.mjs"
     ],
     "files": [
       "app.js",
       "electron-main.mjs",
+      "permission-mcp.mjs",
       "public/**/*",
       "package.json",
       "node_modules/@lydell/**/*"
