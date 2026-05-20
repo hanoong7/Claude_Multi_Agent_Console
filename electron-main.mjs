@@ -24,6 +24,12 @@ function getLogPath() {
 }
 
 const startedAt = Date.now();
+// Truncate the log file at process start so each launch begins with a
+// clean record. Without this, lines from previous runs accumulate and
+// make it harder to share a relevant slice of logs.
+try {
+  writeFileSync(getLogPath(), "");
+} catch {}
 function log(msg) {
   const t = ((Date.now() - startedAt) / 1000).toFixed(2);
   const line = `[+${t.padStart(7)}s] ${msg}\n`;
