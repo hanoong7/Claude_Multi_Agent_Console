@@ -1,4 +1,4 @@
-# Claude Multi-Agent Console &nbsp;·&nbsp; v0.16.1
+# Claude Multi-Agent Console &nbsp;·&nbsp; v0.16.2
 
 내 컴퓨터에서 돌아가는 데스크탑 / 웹 UI로, **본인 Claude Code 구독**을 멀티 에이전트 시스템으로 활용할 수 있게 해줍니다. 오케스트레이터 + 전문가 워커들 + 팀 + 다중 세션 — 전부 채팅 한 곳에서 조율됩니다.
 
@@ -58,9 +58,9 @@ claude auth status
 
 | OS | 파일 |
 | --- | --- |
-| Windows | `ClaudeMultiAgentConsole-0.16.1.exe` |
-| macOS (Apple Silicon) | `ClaudeMultiAgentConsole-0.16.1.dmg` |
-| Linux | `ClaudeMultiAgentConsole-0.16.1.AppImage` |
+| Windows | `ClaudeMultiAgentConsole-0.16.2.exe` |
+| macOS (Apple Silicon) | `ClaudeMultiAgentConsole-0.16.2.dmg` |
+| Linux | `ClaudeMultiAgentConsole-0.16.2.AppImage` |
 
 **처음 실행하면 설정 마법사가 뜹니다.** Local / Remote 모드를 드롭다운으로 선택하고 필요한 경로/포트만 입력하면 자동으로 `config.json`이 생성됩니다 — 손으로 만들 필요 없어요.
 
@@ -92,7 +92,7 @@ Intel Mac(x64)은 현재 지원 안 합니다.
 
 ```
 [로컬]                                          [원격 Linux 서버]
-  ClaudeMultiAgentConsole-0.16.1.exe             ~/Claude_Multi_Agent_Console/
+  ClaudeMultiAgentConsole-0.16.2.exe             ~/Claude_Multi_Agent_Console/
   (또는 .dmg / .AppImage)  ──SSH 터널──▶  node app.js ──┐
        │                                                 │ Claude CLI 호출
        │                                                 ▼
@@ -178,7 +178,7 @@ Save & Continue 누르면 마법사가 SSH로 원격 워크스페이스 존재 �
 
 ```
 C:\Apps\AgentConsole\
-├── ClaudeMultiAgentConsole-0.16.1.exe
+├── ClaudeMultiAgentConsole-0.16.2.exe
 ├── config.json     ← 자동 생성
 └── workspace.json  ← 자동 생성
 ```
@@ -214,12 +214,12 @@ C:\Apps\AgentConsole\
 git clone https://github.com/hanoong7/Claude_Multi_Agent_Console.git
 cd Claude_Multi_Agent_Console
 npm install
-npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.16.1.exe
+npm run dist:win    # → dist-installers/ClaudeMultiAgentConsole-0.16.2.exe
 ```
 
 Linux: `npm run dist:linux` → `.AppImage`. Mac (Apple Silicon): `npm run dist:mac` → `.dmg` (Mac 머신 필요).
 
-> v0.16.1부터 `start.sh` / `start.bat` / `npm start` 같은 수동 실행 경로는 더 이상 제공하지 않습니다. 배포는 `.exe` / `.dmg` / `.AppImage` 한 가지 경로로만 진행됩니다.
+> v0.16.2부터 `start.sh` / `start.bat` / `npm start` 같은 수동 실행 경로는 더 이상 제공하지 않습니다. 배포는 `.exe` / `.dmg` / `.AppImage` 한 가지 경로로만 진행됩니다.
 
 ---
 
